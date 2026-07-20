@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TradersPulse — Capital-First Deriv Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        colors: {
+          brand: {
+            50:  '#eef2ff',
+            100: '#e0e7ff',
+            200: '#c7d2fe',
+            300: '#a5b4fc',
+            400: '#818cf8',
+            500: '#6366f1',
+            600: '#4f46e5',
+            700: '#4338ca',
+            800: '#3730a3',
+            900: '#312e81',
+          }
+        },
+        boxShadow: {
+          'soft': '0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.08)',
+          'soft-lg': '0 4px 6px rgba(15,23,42,.04), 0 20px 40px -20px rgba(15,23,42,.12)',
+          'glow': '0 0 0 4px rgba(99,102,241,.15)',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  html, body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; background: #f8fafc; color: #0f172a; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .fade-in { animation: fadeIn .35s ease-out both; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform:none;} }
+  .pulse-dot { position: relative; }
+  .pulse-dot::after {
+    content:''; position:absolute; inset:-3px; border-radius:999px;
+    background: currentColor; opacity:.35; animation: pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse { 0% { transform:scale(.6); opacity:.5;} 100% { transform:scale(1.8); opacity:0;} }
+  .progress-bar { background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%); }
+  .glass { background: rgba(255,255,255,.7); backdrop-filter: blur(12px); }
+  .hero-grid {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(99,102,241,.12), transparent 40%),
+      radial-gradient(circle at 80% 30%, rgba(6,182,212,.10), transparent 40%),
+      linear-gradient(#f8fafc 1px, transparent 1px),
+      linear-gradient(90deg, #f8fafc 1px, transparent 1px);
+    background-size: auto, auto, 44px 44px, 44px 44px;
+  }
+  .sidebar-link.active { background: #eef2ff; color: #4338ca; }
+  .sidebar-link.active svg { color: #4f46e5; }
+  .table-row:hover { background: #f8fafc; }
+  .chip { display:inline-flex; align-items:center; gap:.35rem; padding:.15rem .55rem; border-radius:999px; font-size:.72rem; font-weight:600; }
+  details > summary { list-style: none; cursor:pointer; }
+  details > summary::-webkit-details-marker { display:none; }
+  @media (max-width: 1024px) {
+    .sidebar { transform: translateX(-100%); transition: transform .3s ease; }
+    .sidebar.open { transform: translateX(0); }
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ============== APP SHELL ============== -->
+<div id="app" class="min-h-screen flex">
+
+  <!-- SIDEBAR (desktop + mobile drawer) -->
+  <aside id="sidebar" class="sidebar fixed lg:sticky top-0 left-0 z-40 h-screen w-72 bg-white border-r border-slate-200/80 flex flex-col">
+    <div class="h-16 flex items-center gap-3 px-6 border-b border-slate-100">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-soft">
+        <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+      </div>
+      <div>
+        <div class="font-bold text-slate-900 tracking-tight">TradersPulse</div>
+        <div class="text-[11px] text-slate-500 -mt-0.5">Capital-First Analytics</div>
+      </div>
+      <button class="lg:hidden ml-auto p-2 rounded-lg hover:bg-slate-100" onclick="toggleSidebar()">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-1">
+      <div class="px-3 pb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Overview</div>
+      <a href="#dashboard" class="sidebar-link active flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+      </a>
+      <a href="#schedule" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">
+        <i data-lucide="calendar-range" class="w-4 h-4"></i> Master Schedule
+      </a>
+      <a href="#contracts" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">
+        <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Contract Performance
+      </a>
+      <a href="#summary" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">
+        <i data-lucide="wallet" class="w-4 h-4"></i> Account Summary
+      </a>
+
+      <div class="px-3 pt-5 pb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tools</div>
+      <a href="#" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">
+        <i data-lucide="file-down" class="w-4 h-4"></i> Export Reports
+      </a>
+      <a href="#" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">
+        <i data-lucide="settings" class="w-4 h-4"></i> Settings
+      </a>
+    </nav>
+
+    <div class="p-4 border-t border-slate-100">
+      <div class="rounded-xl bg-gradient-to-br from-brand-50 to-white border border-brand-100 p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="shield-check" class="w-4 h-4 text-brand-600"></i>
+          <div class="text-xs font-semibold text-brand-800">Capital Preserved</div>
+        </div>
+        <p class="text-[11px] text-slate-600 leading-relaxed">Markets never stop. Protect your capital — opportunities will always return.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="flex-1 min-w-0 flex flex-col">
+
+    <!-- HEADER -->
+    <header class="sticky top-0 z-30 glass border-b border-slate-200/70">
+      <div class="h-16 px-4 sm:px-6 lg:px-8 flex items-center gap-4">
+        <button class="lg:hidden p-2 rounded-lg hover:bg-slate-100" onclick="toggleSidebar()">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+        <div class="flex-1 min-w-0">
+          <div class="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">Dashboard</div>
+          <div class="text-sm font-semibold text-slate-900 truncate" id="header-title">Protect your capital. Track every day.</div>
+        </div>
+
+        <div id="header-connection" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-xs font-medium text-slate-600">
+          <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+          <span id="conn-label">Disconnected</span>
+        </div>
+
+        <!-- Pre-login: Login Button -->
+        <button id="btn-login" onclick="openDerivLogin()" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold shadow-soft transition">
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          <span>Login with Deriv</span>
+        </button>
+
+        <!-- Post-login: Account Card (hidden until logged in) -->
+        <div id="account-card" class="hidden">
+          <!-- rendered dynamically -->
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main id="main-content" class="flex-1 px-4 sm:px-6 lg:px-8 py-6 lg:py-10 space-y-10">
+
+      <!-- ============== PRE-LOGIN: HERO ============== -->
+      <section id="hero-section" class="fade-in">
+        <div class="relative overflow-hidden rounded-3xl hero-grid border border-slate-200/60 bg-white">
+          <div class="px-6 sm:px-10 lg:px-16 py-14 lg:py-24 max-w-4xl">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 border border-brand-100 text-brand-700 text-xs font-semibold mb-6">
+              <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+              Capital-First Trading Intelligence
+            </div>
+            <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.05]">
+              Protect Your Capital.<br/>
+              <span class="bg-gradient-to-r from-brand-600 to-cyan-500 bg-clip-text text-transparent">Opportunities Never Stop.</span>
+            </h1>
+            <p class="mt-6 text-lg text-slate-600 max-w-2xl leading-relaxed">
+              Your trading capital is your greatest asset. Markets create endless opportunities, but replacing lost capital is much harder.
+            </p>
+            <div class="mt-8 flex flex-wrap gap-3">
+              <button onclick="openDerivLogin()" class="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-soft-lg">
+                <i data-lucide="log-in" class="w-4 h-4"></i> Connect Deriv Account
+              </button>
+              <a href="#schedule-setup" class="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-semibold">
+                <i data-lucide="calendar-range" class="w-4 h-4"></i> Plan Your Schedule
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== MASTER SCHEDULE SETUP ============== -->
+      <section id="schedule-setup" class="fade-in">
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft overflow-hidden">
+          <div class="px-6 sm:px-8 py-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+              <div class="flex items-center gap-2 text-brand-600 text-xs font-semibold uppercase tracking-wider">
+                <i data-lucide="calendar-check" class="w-4 h-4"></i> Planning
+              </div>
+              <h2 class="mt-1 text-2xl font-bold text-slate-900 tracking-tight">Master Schedule</h2>
+              <p class="mt-1 text-sm text-slate-500">Set your trading goal to automatically generate your complete trading plan.</p>
+            </div>
+            <div class="text-xs text-slate-500 mono">Compound growth model</div>
+          </div>
+
+          <form id="schedule-form" class="p-6 sm:p-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-2">Initial Balance</label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                <input type="number" id="f-balance" min="1" step="0.01" value="100" required
+                  class="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition text-sm"/>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-2">Trading Days</label>
+              <input type="number" id="f-days" min="1" max="365" value="30" required
+                class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition text-sm"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-2">Daily Growth Rate (%)</label>
+              <input type="number" id="f-rate" min="0.01" max="100" step="0.01" value="5" required
+                class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition text-sm"/>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-2">Cycle Start Date</label>
+              <input type="date" id="f-start" required
+                class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition text-sm"/>
+            </div>
+            <div class="sm:col-span-2 lg:col-span-4 flex justify-end">
+              <button type="submit" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-soft-lg transition">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                Generate Master Schedule
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============== SCHEDULE OUTPUT (pre-login) ============== -->
+      <section id="schedule-output" class="hidden fade-in">
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft overflow-hidden">
+          <div class="px-6 sm:px-8 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-bold text-slate-900">Generated Schedule</h3>
+              <p class="text-xs text-slate-500 mt-0.5" id="schedule-meta"></p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="exportSchedulePDF()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-medium text-slate-700">
+                <i data-lucide="file-text" class="w-4 h-4"></i> Export PDF
+              </button>
+              <button onclick="exportScheduleExcel()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-medium text-slate-700">
+                <i data-lucide="table" class="w-4 h-4"></i> Export Excel
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th class="text-left px-4 py-3 font-semibold">Day</th>
+                  <th class="text-right px-4 py-3 font-semibold">Expected Start</th>
+                  <th class="text-right px-4 py-3 font-semibold">Expected End</th>
+                  <th class="text-right px-4 py-3 font-semibold">Daily Profit Target</th>
+                  <th class="text-right px-4 py-3 font-semibold">Required %</th>
+                  <th class="text-right px-4 py-3 font-semibold">Actual Balance</th>
+                  <th class="text-right px-4 py-3 font-semibold">Difference</th>
+                  <th class="text-center px-4 py-3 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody id="schedule-tbody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+          <div class="px-6 sm:px-8 py-5 bg-slate-50/60 border-t border-slate-100 text-xs text-slate-600 leading-relaxed">
+            <i data-lucide="info" class="w-3.5 h-3.5 inline-block mr-1 -mt-0.5 text-brand-600"></i>
+            Your master schedule is generated from the goal you set above. After logging in, your actual account balance will automatically be compared with the expected balance for each trading day.
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== POST-LOGIN: ACCOUNT CARD (in-header) + TODAY'S TARGET ============== -->
+      <section id="today-target" class="hidden fade-in">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <div class="text-xs font-semibold text-brand-600 uppercase tracking-wider">Today</div>
+            <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Today's Target</h2>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot text-emerald-500"></span>
+            <span>Live sync</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+          <!-- Card 1 -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft p-5 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Starting Balance</span>
+              <i data-lucide="wallet" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <div class="mt-3 text-2xl font-bold text-slate-900 mono" id="kpi-start">—</div>
+            <div class="mt-1 text-[11px] text-slate-500">Expected today</div>
+          </div>
+          <!-- Card 2 -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft p-5 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Profit Target</span>
+              <i data-lucide="target" class="w-4 h-4 text-brand-500"></i>
+            </div>
+            <div class="mt-3 text-2xl font-bold text-brand-700 mono" id="kpi-target">—</div>
+            <div class="mt-1 text-[11px] text-slate-500">Plan to secure</div>
+          </div>
+          <!-- Card 3 -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft p-5 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Required %</span>
+              <i data-lucide="percent" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <div class="mt-3 text-2xl font-bold text-slate-900 mono" id="kpi-rate">—</div>
+            <div class="mt-1 text-[11px] text-slate-500">Daily growth rate</div>
+          </div>
+          <!-- Card 4 -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft p-5 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Expected Balance</span>
+              <i data-lucide="trending-up" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <div class="mt-3 text-2xl font-bold text-slate-900 mono" id="kpi-expected">—</div>
+            <div class="mt-1 text-[11px] text-slate-500">End of day target</div>
+          </div>
+          <!-- Card 5 -->
+          <div class="bg-white rounded-2xl border border-emerald-100 shadow-soft p-5 flex flex-col bg-gradient-to-br from-emerald-50/50 to-white">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Live Balance</span>
+              <span class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            </div>
+            <div class="mt-3 text-2xl font-bold text-emerald-700 mono" id="kpi-live">—</div>
+            <div class="mt-1 text-[11px] text-emerald-600/80" id="kpi-live-delta">Connecting…</div>
+          </div>
+          <!-- Card 6 -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft p-5 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">30-Day Goal</span>
+              <i data-lucide="flag" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <div class="mt-3 text-2xl font-bold text-slate-900 mono" id="kpi-goal">—</div>
+            <div class="mt-1 text-[11px] text-slate-500">Cycle end target</div>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="mt-6 bg-white rounded-2xl border border-slate-200/80 shadow-soft p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div class="text-sm font-semibold text-slate-900">Cycle Progress</div>
+              <div class="text-xs text-slate-500" id="progress-label">Day 0 of 0</div>
+            </div>
+            <div class="text-2xl font-bold text-slate-900 mono" id="progress-pct">0%</div>
+          </div>
+          <div class="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div id="progress-fill" class="h-full progress-bar rounded-full transition-all duration-500" style="width:0%"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== POST-LOGIN: MASTER SCHEDULE (live) ============== -->
+      <section id="live-schedule" class="hidden fade-in">
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft overflow-hidden">
+          <div class="px-6 sm:px-8 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-bold text-slate-900">Master Schedule — Live</h3>
+              <p class="text-xs text-slate-500 mt-0.5">Actual balances compared against your plan in real time.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="exportSchedulePDF()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-medium text-slate-700">
+                <i data-lucide="file-text" class="w-4 h-4"></i> Export PDF
+              </button>
+              <button onclick="exportScheduleExcel()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-medium text-slate-700">
+                <i data-lucide="table" class="w-4 h-4"></i> Export Excel
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th class="text-left px-4 py-3 font-semibold">Day</th>
+                  <th class="text-right px-4 py-3 font-semibold">Starting</th>
+                  <th class="text-right px-4 py-3 font-semibold">Target</th>
+                  <th class="text-right px-4 py-3 font-semibold">Actual</th>
+                  <th class="text-right px-4 py-3 font-semibold">Difference</th>
+                  <th class="text-center px-4 py-3 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody id="live-schedule-tbody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== OPTION CONTRACT PERFORMANCE ============== -->
+      <section id="contracts-section" class="hidden fade-in">
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft overflow-hidden">
+          <div class="px-6 sm:px-8 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2 text-brand-600 text-xs font-semibold uppercase tracking-wider">
+                <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Performance
+              </div>
+              <h3 class="text-lg font-bold text-slate-900">Option Contract Performance</h3>
+              <p class="text-xs text-slate-500 mt-0.5">Completed contracts only — grouped by contract type. Open positions are excluded.</p>
+            </div>
+          </div>
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th class="text-left px-4 py-3 font-semibold">Contract Type</th>
+                  <th class="text-right px-4 py-3 font-semibold">Trades</th>
+                  <th class="text-right px-4 py-3 font-semibold">Wins</th>
+                  <th class="text-right px-4 py-3 font-semibold">Losses</th>
+                  <th class="text-right px-4 py-3 font-semibold">Win %</th>
+                  <th class="text-right px-4 py-3 font-semibold">Net Profit</th>
+                  <th class="text-right px-4 py-3 font-semibold">Avg Profit</th>
+                </tr>
+              </thead>
+              <tbody id="contracts-tbody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+          <div id="contracts-empty" class="hidden px-6 sm:px-8 py-10 text-center text-sm text-slate-500">
+            No completed contracts yet. Trades will appear here automatically.
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== ACCOUNT SUMMARY ============== -->
+      <section id="summary-section" class="hidden fade-in">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <div class="text-xs font-semibold text-brand-600 uppercase tracking-wider">Overview</div>
+            <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Account Summary</h2>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4" id="summary-grid">
+          <!-- populated dynamically -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="px-4 sm:px-6 lg:px-8 py-6 text-xs text-slate-500 border-t border-slate-100">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>© 2026 TradersPulse — Capital preservation analytics for Deriv Options traders.</div>
+        <div class="mono">v1.0 · Build 2026.07.15</div>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- SIDEBAR OVERLAY (mobile) -->
+<div id="sidebar-overlay" class="hidden fixed inset-0 bg-slate-900/40 z-30 lg:hidden" onclick="toggleSidebar()"></div>
+
+<!-- ============== LOGIN MODAL ============== -->
+<div id="login-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-soft-lg w-full max-w-md overflow-hidden fade-in">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+      <div>
+        <div class="text-xs font-semibold text-brand-600 uppercase tracking-wider">Secure Connect</div>
+        <h3 class="text-lg font-bold text-slate-900">Login with Deriv</h3>
+      </div>
+      <button onclick="closeLoginModal()" class="p-2 rounded-lg hover:bg-slate-100">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <p class="text-sm text-slate-600">Enter your Deriv API token to connect your account. Your token is stored locally in your browser only.</p>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-2">API Token</label>
+        <input id="api-token" type="password" placeholder="Paste your Deriv API token"
+          class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition text-sm mono"/>
+      </div>
+      <div class="flex items-start gap-2 text-xs text-slate-500">
+        <i data-lucide="shield" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i>
+        <span>We request <b>trade</b> and <b>account_manage</b> scopes only. No withdrawal permissions.</span>
+      </div>
+      <button onclick="submitLogin()" class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold">
+        <i data-lucide="log-in" class="w-4 h-4"></i> Connect Account
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============== ACCOUNT SWITCHER DROPDOWN ============== -->
+<div id="account-dropdown" class="hidden fixed z-50 w-80 bg-white rounded-2xl shadow-soft-lg border border-slate-200 overflow-hidden fade-in">
+  <div class="px-4 py-3 border-b border-slate-100">
+    <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Switch Account</div>
+  </div>
+  <div id="account-list" class="max-h-80 overflow-y-auto scrollbar-thin"></div>
+  <div class="px-4 py-3 border-t border-slate-100 bg-slate-50">
+    <button onclick="logout()" class="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-rose-600 hover:bg-rose-50">
+      <i data-lucide="log-out" class="w-4 h-4"></i> Disconnect
+    </button>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   TRADERSPULSE — APP CORE
+   ========================================================= */
+
+const DERIV_WS_URL = 'wss://ws.derivws.com/websockets/v3?app_id=1089'; // public app_id placeholder
+
+const state = {
+  ws: null,
+  isLoggedIn: false,
+  token: null,
+  accounts: [],        // [{loginid, currency, is_virtual, landing_company_shortcode}]
+  currentAccount: null, // loginid
+  balance: { balance: 0, currency: 'USD' },
+  schedule: null,      // { initial, days, rate, startDate, rows:[] }
+  todayDay: 0,
+  contracts: [],       // completed option contracts
+  summary: {},
+  reqId: 1,
+};
+
+/* ---------- Utilities ---------- */
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d=2) => (Number(n)||0).toLocaleString(undefined, { minimumFractionDigits:d, maximumFractionDigits:d });
+const todayISO = () => new Date().toISOString().slice(0,10);
+const nextId = () => ({ req_id: state.reqId++ });
+
+/* ---------- Sidebar ---------- */
+function toggleSidebar() {
+  const sb = $('sidebar'), ov = $('sidebar-overlay');
+  sb.classList.toggle('open');
+  ov.classList.toggle('hidden');
+}
+document.querySelectorAll('.sidebar-link').forEach(a => {
+  a.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-link').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+    if (window.innerWidth < 1024) toggleSidebar();
+  });
+});
+
+/* ---------- Master Schedule Math ---------- */
+function buildSchedule({ initial, days, rate, startDate }) {
+  const rows = [];
+  let start = Number(initial);
+  const r = Number(rate)/100;
+  const base = new Date(startDate);
+  for (let i=1; i<=Number(days); i++) {
+    const end = start * (1 + r);
+    const profit = end - start;
+    const date = new Date(base); date.setDate(base.getDate() + (i-1));
+    rows.push({
+      day: i,
+      date: date.toISOString().slice(0,10),
+      start, end, profit,
+      rate: Number(rate),
+      actual: null,
+      diff: null,
+      status: 'pending'
+    });
+    start = end;
+  }
+  return { initial:Number(initial), days:Number(days), rate:Number(rate), startDate, rows };
+}
+
+function renderPreLoginSchedule() {
+  const s = state.schedule; if (!s) return;
+  const tbody = $('schedule-tbody');
+  tbody.innerHTML = s.rows.map(r => `
+    <tr class="table-row">
+      <td class="px-4 py-3 font-medium text-slate-900">
+        <div>Day ${r.day}</div>
+        <div class="text-[11px] text-slate-500 mono">${r.date}</div>
+      </td>
+      <td class="px-4 py-3 text-right mono text-slate-700">${fmt(r.start)}</td>
+      <td class="px-4 py-3 text-right mono text-slate-700">${fmt(r.end)}</td>
+      <td class="px-4 py-3 text-right mono text-brand-700 font-semibold">+${fmt(r.profit)}</td>
+      <td class="px-4 py-3 text-right mono text-slate-700">${r.rate}%</td>
+      <td class="px-4 py-3 text-right mono text-slate-400">—</td>
+      <td class="px-4 py-3 text-right mono text-slate-400">—</td>
+      <td class="px-4 py-3 text-center">
+        <span class="chip bg-slate-100 text-slate-600">Pending</span>
+      </td>
+    </tr>
+  `).join('');
+  $('schedule-meta').textContent = `${s.days} days · ${s.rate}% daily · starting ${fmt(s.initial)} · from ${s.startDate}`;
+  $('schedule-output').classList.remove('hidden');
+}
+
+function renderLiveSchedule() {
+  const s = state.schedule; if (!s) return;
+  const live = state.balance.balance;
+  const tbody = $('live-schedule-tbody');
+  tbody.innerHTML = s.rows.map(r => {
+    // Actual balance logic: for past days, use live balance if today matches; otherwise keep null until logged.
+    const isToday = r.date === todayISO();
+    const isPast = new Date(r.date) < new Date(todayISO());
+    let actual = r.actual;
+    if (isToday) actual = live;
+    // For past days, we don't have historical balances from a single snapshot; mark as today's only.
+    const diff = actual != null ? actual - r.end : null;
+    let statusChip = '';
+    if (actual == null) statusChip = `<span class="chip bg-slate-100 text-slate-600">Pending</span>`;
+    else if (diff >= 0) statusChip = `<span class="chip bg-emerald-50 text-emerald-700">✅ On Track</span>`;
+    else if (diff >= -r.profit*0.1) statusChip = `<span class="chip bg-amber-50 text-amber-700">⚠ Close</span>`;
+    else statusChip = `<span class="chip bg-rose-50 text-rose-700">⚠ Below</span>`;
+
+    return `
+      <tr class="table-row ${isToday ? 'bg-brand-50/30' : ''}">
+        <td class="px-4 py-3 font-medium text-slate-900">
+          <div class="flex items-center gap-2">Day ${r.day} ${isToday ? '<span class="chip bg-brand-100 text-brand-700">Today</span>' : ''}</div>
+          <div class="text-[11px] text-slate-500 mono">${r.date}</div>
+        </td>
+        <td class="px-4 py-3 text-right mono text-slate-700">${fmt(r.start)}</td>
+        <td class="px-4 py-3 text-right mono text-slate-700">${fmt(r.end)}</td>
+        <td class="px-4 py-3 text-right mono font-semibold ${actual!=null?'text-slate-900':'text-slate-400'}">${actual!=null?fmt(actual):'—'}</td>
+        <td class="px-4 py-3 text-right mono font-semibold ${diff==null?'text-slate-400':diff>=0?'text-emerald-600':'text-rose-600'}">${diff==null?'—':(diff>=0?'+':'')+fmt(diff)}</td>
+        <td class="px-4 py-3 text-center">${statusChip}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/* ---------- Today's Target KPIs ---------- */
+function renderTodayTarget() {
+  const s = state.schedule; if (!s) return;
+  const todayIdx = s.rows.findIndex(r => r.date === todayISO());
+  const row = todayIdx >= 0 ? s.rows[todayIdx] : s.rows[0];
+  state.todayDay = todayIdx >= 0 ? row.day : 1;
+
+  $('kpi-start').textContent = fmt(row.start);
+  $('kpi-target').textContent = '+' + fmt(row.profit);
+  $('kpi-rate').textContent = row.rate + '%';
+  $('kpi-expected').textContent = fmt(row.end);
+  $('kpi-live').textContent = fmt(state.balance.balance);
+  $('kpi-goal').textContent = fmt(s.rows[s.rows.length-1].end);
+
+  const delta = state.balance.balance - row.end;
+  $('kpi-live-delta').textContent = (delta>=0?'+':'') + fmt(delta) + ' vs target';
+  $('kpi-live-delta').className = 'mt-1 text-[11px] ' + (delta>=0?'text-emerald-600':'text-rose-600');
+
+  const pct = Math.min(100, Math.round((state.todayDay / s.days) * 100));
+  $('progress-pct').textContent = pct + '%';
+  $('progress-fill').style.width = pct + '%';
+  $('progress-label').textContent = `Day ${state.todayDay} of ${s.days}`;
+}
+
+/* ---------- Option Contract Performance ---------- */
+function renderContracts() {
+  const groups = {};
+  state.contracts.forEach(c => {
+    const type = c.contract_type || 'Unknown';
+    if (!groups[type]) groups[type] = { type, trades:0, wins:0, losses:0, net:0 };
+    groups[type].trades++;
+    const profit = Number(c.profit)||0;
+    if (profit > 0) groups[type].wins++;
+    else if (profit < 0) groups[type].losses++;
+    groups[type].net += profit;
+  });
+  const rows = Object.values(groups).sort((a,b)=>b.trades-a.trades);
+  const tbody = $('contracts-tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = '';
+    $('contracts-empty').classList.remove('hidden');
+    return;
+  }
+  $('contracts-empty').classList.add('hidden');
+  tbody.innerHTML = rows.map(g => {
+    const winPct = g.trades ? (g.wins/g.trades*100) : 0;
+    const avg = g.trades ? g.net/g.trades : 0;
+    const barColor = winPct>=70?'bg-emerald-500':winPct>=50?'bg-amber-500':'bg-rose-500';
+    return `
+      <tr class="table-row">
+        <td class="px-4 py-3">
+          <div class="font-semibold text-slate-900">${typeLabel(g.type)}</div>
+          <div class="mt-1.5 h-1 w-24 bg-slate-100 rounded-full overflow-hidden">
+            <div class="${barColor} h-full rounded-full" style="width:${winPct}%"></div>
+          </div>
+        </td>
+        <td class="px-4 py-3 text-right mono text-slate-700">${g.trades}</td>
+        <td class="px-4 py-3 text-right mono text-emerald-600 font-semibold">${g.wins}</td>
+        <td class="px-4 py-3 text-right mono text-rose-600 font-semibold">${g.losses}</td>
+        <td class="px-4 py-3 text-right mono font-semibold text-slate-900">${winPct.toFixed(1)}%</td>
+        <td class="px-4 py-3 text-right mono font-semibold ${g.net>=0?'text-emerald-600':'text-rose-600'}">${g.net>=0?'+':''}${fmt(g.net)}</td>
+        <td class="px-4 py-3 text-right mono text-slate-700">${avg>=0?'+':''}${fmt(avg)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+function typeLabel(t){
+  const map = {
+    'DIGITOVER':'Digit Over','DIGITUNDER':'Digit Under','DIGITODD':'Digit Odd','DIGITEVEN':'Digit Even',
+    'DIGITMATCH':'Digit Match','DIGITDIFF':'Digit Differs','CALL':'Rise','PUT':'Fall',
+    'CALLPUT':'Higher/Lower','higher':'Higher','lower':'Lower','ONETOUCH':'Touch','NOTOUCH':'No Touch'
+  };
+  return map[t] || t;
+}
+
+/* ---------- Account Summary ---------- */
+function renderSummary() {
+  const total = state.contracts.length;
+  const wins = state.contracts.filter(c=>Number(c.profit)>0).length;
+  const losses = state.contracts.filter(c=>Number(c.profit)<0).length;
+  const winRate = total ? (wins/total*100).toFixed(2) : '0.00';
+  const todayProfit = state.contracts
+    .filter(c => new Date(Number(c.date_expiry||c.purchase_time||0)*1000).toDateString() === new Date().toDateString())
+    .reduce((s,c)=>s+Number(c.profit||0),0);
+
+  // current streak
+  let streak = 0, streakLabel = '—';
+  const sorted = [...state.contracts].sort((a,b)=>Number(b.date_expiry||0)-Number(a.date_expiry||0));
+  for (const c of sorted) {
+    const p = Number(c.profit||0);
+    if (p>0) { streak++; } else if (p<0) { streakLabel = `❄ ${Math.abs(streak)} Losses`; streak = -1; break; }
+    else break;
+  }
+  if (streak>0) streakLabel = `🔥 ${streak} Wins`;
+
+  const acc = state.accounts.find(a=>a.loginid===state.currentAccount) || {};
+  const items = [
+    { label:'Total Trades', value: total, icon:'activity', tone:'slate' },
+    { label:'Winning Trades', value: wins, icon:'trophy', tone:'emerald' },
+    { label:'Losing Trades', value: losses, icon:'alert-triangle', tone:'rose' },
+    { label:'Overall Win Rate', value: winRate+'%', icon:'percent', tone:'brand' },
+    { label:'Current Streak', value: streakLabel, icon:'flame', tone:'amber', isText:true },
+    { label:"Today's Profit", value: (todayProfit>=0?'+':'')+fmt(todayProfit)+' '+state.balance.currency, icon:'trending-up', tone: todayProfit>=0?'emerald':'rose', isText:true },
+    { label:'Connected Account', value: state.currentAccount || '—', icon:'user', tone:'slate', isText:true, mono:true },
+    { label:'Currency', value: state.balance.currency || '—', icon:'coins', tone:'slate', isText:true },
+    { label:'Current Market', value: 'Deriv Synthetic Indices', icon:'layers', tone:'slate', isText:true },
+  ];
+
+  const toneMap = {
+    slate:'text-slate-600', emerald:'text-emerald-600', rose:'text-rose-600',
+    brand:'text-brand-600', amber:'text-amber-600'
+  };
+  $('summary-grid').innerHTML = items.map(it => `
+    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-soft p-5">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">${it.label}</span>
+        <i data-lucide="${it.icon}" class="w-4 h-4 ${toneMap[it.tone]||'text-slate-400'}"></i>
+      </div>
+      <div class="mt-3 text-xl font-bold text-slate-900 ${it.mono?'mono':''} ${it.isText?'':'mono'}">${it.value}</div>
+    </div>
+  `).join('');
+  lucide.createIcons();
+}
+
+/* ---------- Account Card (header) ---------- */
+function renderAccountCard() {
+  const acc = state.accounts.find(a=>a.loginid===state.currentAccount);
+  if (!acc) return;
+  const isReal = !acc.is_virtual;
+  const flag = isReal ? '🇺🇸' : '';
+  const badge = isReal
+    ? `<span class="chip bg-emerald-50 text-emerald-700 border border-emerald-100">REAL</span>`
+    : `<span class="chip bg-sky-50 text-sky-700 border border-sky-100">DEMO</span>`;
+
+  $('account-card').innerHTML = `
+    <button onclick="toggleAccountDropdown(event)" class="inline-flex items-center gap-3 pl-3 pr-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 shadow-soft transition">
+      <div class="text-left">
+        <div class="flex items-center gap-2">
+          ${flag ? `<span class="text-sm">${flag}</span>` : ''}
+          ${badge}
+          <span class="mono text-xs font-semibold text-slate-900">${acc.loginid}</span>
+        </div>
+        <div class="text-[11px] text-slate-500 mt-0.5">
+          <span class="mono font-semibold text-slate-900">${fmt(state.balance.balance)}</span>
+          <span class="ml-1">${state.balance.currency}</span>
+        </div>
+      </div>
+      <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+    </button>
+  `;
+  lucide.createIcons();
+}
+
+function toggleAccountDropdown(e) {
+  e.stopPropagation();
+  const dd = $('account-dropdown');
+  if (dd.classList.contains('hidden')) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 8) + 'px';
+    dd.style.right = (window.innerWidth - rect.right) + 'px';
+    dd.style.left = 'auto';
+    renderAccountList();
+    dd.classList.remove('hidden');
+  } else {
+    dd.classList.add('hidden');
+  }
+}
+document.addEventListener('click', (e) => {
+  const dd = $('account-dropdown');
+  if (!dd.classList.contains('hidden') && !dd.contains(e.target)) dd.classList.add('hidden');
+});
+
+function renderAccountList() {
+  $('account-list').innerHTML = state.accounts.map(a => {
+    const active = a.loginid === state.currentAccount;
+    const isReal = !a.is_virtual;
+    return `
+      <button onclick="switchAccount('${a.loginid}')" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 text-left ${active?'bg-brand-50/40':''}">
+        <div class="w-9 h-9 rounded-lg ${isReal?'bg-emerald-100 text-emerald-700':'bg-sky-100 text-sky-700'} flex items-center justify-center text-sm font-bold">
+          ${isReal?'🇺🇸':'D'}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="mono text-sm font-semibold text-slate-900">${a.loginid}</span>
+            ${isReal?'<span class="chip bg-emerald-50 text-emerald-700">REAL</span>':'<span class="chip bg-sky-50 text-sky-700">DEMO</span>'}
+          </div>
+          <div class="text-[11px] text-slate-500 truncate">${a.landing_company_shortcode||''} · ${a.currency||''}</div>
+        </div>
+        ${active?'<i data-lucide="check" class="w-4 h-4 text-brand-600"></i>':''}
+      </button>
+    `;
+  }).join('');
+  lucide.createIcons();
+}
+
+function switchAccount(loginid) {
+  state.currentAccount = loginid;
+  $('account-dropdown').classList.add('hidden');
+  // Re-authorize with the selected account's token if needed; for simplicity, re-subscribe balance
+  send({ authorize: state.token });
+}
+
+/* ---------- Deriv WebSocket ---------- */
+function connect() {
+  if (state.ws && state.ws.readyState === 1) return;
+  state.ws = new WebSocket(DERIV_WS_URL);
+  state.ws.onopen = () => setConnection('connected');
+  state.ws.onclose = () => setConnection('disconnected');
+  state.ws.onerror = () => setConnection('error');
+  state.ws.onmessage = (ev) => handleMessage(JSON.parse(ev.data));
+}
+function send(payload) {
+  if (!state.ws || state.ws.readyState !== 1) { connect(); setTimeout(()=>send(payload), 500); return; }
+  state.ws.send(JSON.stringify({ ...payload, ...nextId() }));
+}
+function setConnection(s) {
+  const dot = $('header-connection').querySelector('span');
+  const label = $('conn-label');
+  const map = {
+    connected:   ['bg-emerald-500 text-emerald-700','Live'],
+    disconnected:['bg-slate-400 text-slate-600','Disconnected'],
+    error:       ['bg-rose-500 text-rose-700','Error'],
+  };
+  const [cls, txt] = map[s] || map.disconnected;
+  dot.className = 'w-2 h-2 rounded-full ' + cls.split(' ')[0];
+  label.textContent = txt;
+  label.className = 'text-xs font-medium ' + cls.split(' ')[1];
+}
+
+function handleMessage(msg) {
+  if (msg.error) { console.warn('Deriv error', msg.error); return; }
+
+  if (msg.msg_type === 'authorize') {
+    state.isLoggedIn = true;
+    state.accounts = msg.authorize.account_list || [];
+    state.currentAccount = msg.authorize.loginid;
+    state.balance.currency = msg.authorize.currency;
+    applyLoggedInUI();
+    send({ balance: 1, subscription: 1 });
+    send({ transaction: 1, subscribe: 1, transaction_type: 'all' });
+    // Load historical closed contracts
+    send({ statement: 1, description: 1, limit: 200, offset: 0, contract_type: 'ALL' });
+  }
+
+  if (msg.msg_type === 'balance') {
+    state.balance.balance = Number(msg.balance.balance);
+    state.balance.currency = msg.balance.currency || state.balance.currency;
+    renderAccountCard();
+    renderTodayTarget();
+    renderLiveSchedule();
+    renderSummary();
+  }
+
+  if (msg.msg_type === 'transaction') {
+    const t = msg.transaction;
+    if (t.action === 'sell' || t.action === 'expire') {
+      // A contract closed — refresh via statement
+      send({ statement: 1, description: 1, limit: 200, offset: 0, contract_type: 'ALL' });
+    }
+  }
+
+  if (msg.msg_type === 'statement') {
+    const txs = (msg.statement.transactions || []).filter(t => t.contract_type && t.is_sold === 1);
+    state.contracts = txs;
+    renderContracts();
+    renderSummary();
+  }
+}
+
+/* ---------- UI State Transitions ---------- */
+function applyLoggedInUI() {
+  $('btn-login').classList.add('hidden');
+  $('account-card').classList.remove('hidden');
+  $('hero-section').classList.add('hidden');
+  $('today-target').classList.remove('hidden');
+  $('live-schedule').classList.remove('hidden');
+  $('contracts-section').classList.remove('hidden');
+  $('summary-section').classList.remove('hidden');
+  $('header-connection').classList.remove('hidden');
+  $('header-connection').classList.add('sm:flex');
+  $('header-title').textContent = 'Welcome back — capital preserved.';
+  renderAccountCard();
+  renderTodayTarget();
+  renderLiveSchedule();
+  renderContracts();
+  renderSummary();
+}
+
+function applyLoggedOutUI() {
+  $('btn-login').classList.remove('hidden');
+  $('account-card').classList.add('hidden');
+  $('hero-section').classList.remove('hidden');
+  $('today-target').classList.add('hidden');
+  $('live-schedule').classList.add('hidden');
+  $('contracts-section').classList.add('hidden');
+  $('summary-section').classList.add('hidden');
+  $('header-title').textContent = 'Protect your capital. Track every day.';
+}
+
+/* ---------- Login Flow ---------- */
+function openDerivLogin() { $('login-modal').classList.remove('hidden'); }
+function closeLoginModal() { $('login-modal').classList.add('hidden'); }
+function submitLogin() {
+  const t = $('api-token').value.trim();
+  if (!t) return;
+  state.token = t;
+  closeLoginModal();
+  connect();
+  setTimeout(()=>send({ authorize: t }), 400);
+}
+function logout() {
+  state.isLoggedIn = false;
+  state.token = null;
+  state.accounts = [];
+  state.currentAccount = null;
+  state.contracts = [];
+  if (state.ws) state.ws.close();
+  $('account-dropdown').classList.add('hidden');
+  applyLoggedOutUI();
+}
+
+/* ---------- Exports ---------- */
+function exportSchedulePDF() {
+  const s = state.schedule; if (!s) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.text('TradersPulse — Master Schedule', 14, 18);
+  doc.setFontSize(10); doc.setTextColor(100);
+  doc.text(`${s.days} days · ${s.rate}% daily · starting ${fmt(s.initial)} · from ${s.startDate}`, 14, 26);
+  const head = state.isLoggedIn
+    ? [['Day','Date','Starting','Target','Actual','Diff','Status']]
+    : [['Day','Date','Start','End','Profit Target','Req %','Actual','Diff','Status']];
+  const body = s.rows.map(r => {
+    const diff = r.actual!=null ? (r.actual - r.end) : null;
+    const status = r.actual==null ? 'Pending' : (diff>=0?'On Track':'Below');
+    return state.isLoggedIn
+      ? [r.day, r.date, fmt(r.start), fmt(r.end), r.actual!=null?fmt(r.actual):'—', diff!=null?(diff>=0?'+':'')+fmt(diff):'—', status]
+      : [r.day, r.date, fmt(r.start), fmt(r.end), '+'+fmt(r.profit), r.rate+'%', '—','—','Pending'];
+  });
+  doc.autoTable({ head, body, startY: 34, styles:{fontSize:9}, headStyles:{fillColor:[79,70,229]} });
+  doc.save('traderspulse-schedule.pdf');
+}
+function exportScheduleExcel() {
+  const s = state.schedule; if (!s) return;
+  const rows = s.rows.map(r => ({
+    Day: r.day, Date: r.date,
+    'Starting Balance': +r.start.toFixed(2),
+    'Target Balance': +r.end.toFixed(2),
+    'Daily Profit Target': +r.profit.toFixed(2),
+    'Required %': r.rate,
+    'Actual Balance': r.actual!=null?+r.actual.toFixed(2):'',
+    'Difference': r.actual!=null?+(r.actual-r.end).toFixed(2):'',
+    'Status': r.actual==null?'Pending':(r.actual-r.end>=0?'On Track':'Below')
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Schedule');
+  XLSX.writeFile(wb, 'traderspulse-schedule.xlsx');
+}
+
+/* ---------- Init ---------- */
+(function init(){
+  // default start date = today
+  $('f-start').value = todayISO();
+  $('schedule-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    state.schedule = buildSchedule({
+      initial: $('f-balance').value,
+      days: $('f-days').value,
+      rate: $('f-rate').value,
+      startDate: $('f-start').value,
+    });
+    renderPreLoginSchedule();
+    document.getElementById('schedule-output').scrollIntoView({ behavior:'smooth', block:'start' });
+  });
+  applyLoggedOutUI();
+  lucide.createIcons();
+})();
+</script>
+</body>
+</html>

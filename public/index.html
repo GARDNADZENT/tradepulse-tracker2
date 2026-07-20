@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TradersPulse — Capital-First Deriv Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        colors: {
+          brand: {
+            50:  '#eef2ff',
+            100: '#e0e7ff',
+            200: '#c7d2fe',
+            300: '#a5b4fc',
+            400: '#818cf8',
+            500: '#6366f1',
+            600: '#4f46e5',
+            700: '#4338ca',
+            800: '#3730a3',
+            900: '#312e81',
+          }
+        },
+        boxShadow: {
+          'soft': '0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.08)',
+          'soft-lg': '0 4px 6px rgba(15,23,42,.04), 0 20px 40px -20px rgba(15,23,42,.12)',
+          'glow': '0 0 0 4px rgba(99,102,241,.15)',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  html, body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; background: #0b0f19; color: #e2e8f0; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .scrollbar-thin::-webkit-scrollbar { height: 5px; width: 5px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 999px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .fade-in { animation: fadeIn .3s ease-out both; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(4px);} to { opacity:1; transform:none;} }
+  .pulse-dot { position: relative; }
+  .pulse-dot::after {
+    content:''; position:absolute; inset:-2px; border-radius:999px;
+    background: currentColor; opacity:.4; animation: pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse { 0% { transform:scale(.6); opacity:.6;} 100% { transform:scale(1.8); opacity:0;} }
+  .progress-bar { background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%); }
+  .glass { background: rgba(15,23,42,.75); backdrop-filter: blur(16px); border: 1px solid rgba(148,163,184,.08); }
+  .glass-card { 
+    background: linear-gradient(180deg, rgba(30,41,59,.6) 0%, rgba(15,23,42,.4) 100%); 
+    backdrop-filter: blur(12px); 
+    border: 1px solid rgba(148,163,184,.08);
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .glass-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px -8px rgba(0,0,0,.3);
+    border-color: rgba(148,163,184,.15);
+  }
+  .card-accent-green { border-left: 3px solid #10b981; }
+  .card-accent-blue { border-left: 3px solid #3b82f6; }
+  .card-accent-purple { border-left: 3px solid #8b5cf6; }
+  .card-accent-orange { border-left: 3px solid #f59e0b; }
+  .card-accent-red { border-left: 3px solid #ef4444; }
+  .hero-grid {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(99,102,241,.12), transparent 40%),
+      radial-gradient(circle at 80% 30%, rgba(6,182,212,.10), transparent 40%),
+      linear-gradient(rgba(15,23,42,.4) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15,23,42,.4) 1px, transparent 1px);
+    background-size: auto, auto, 48px 48px, 48px 48px;
+  }
+  .sidebar-link.active { 
+    background: linear-gradient(90deg, rgba(99,102,241,.12) 0%, rgba(99,102,241,.04) 100%); 
+    color: #a5b4fc; 
+    border-right: 2px solid #6366f1;
+  }
+  .sidebar-link.active svg { color: #818cf8; }
+  .sidebar-link { transition: all .15s ease; }
+  .sidebar-link:hover { background: rgba(148,163,184,.06); }
+  .table-row:hover { background: rgba(148,163,184,.04); }
+  .table-row { transition: background .15s ease; }
+  .chip { display:inline-flex; align-items:center; gap:.35rem; padding:.15rem .55rem; border-radius:999px; font-size:.72rem; font-weight:600; }
+  .status-pending { background: rgba(100,116,139,.15); color: #94a3b8; border: 1px solid rgba(148,163,184,.1); }
+  .status-ontrack { background: rgba(16,185,129,.1); color: #34d399; border: 1px solid rgba(16,185,129,.15); }
+  .status-close { background: rgba(245,158,11,.1); color: #fbbf24; border: 1px solid rgba(245,158,11,.15); }
+  .status-below { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.15); }
+  details > summary { list-style: none; cursor:pointer; }
+  details > summary::-webkit-details-marker { display:none; }
+  @media (max-width: 1024px) {
+    .sidebar { transform: translateX(-100%); transition: transform .3s ease; }
+    .sidebar.open { transform: translateX(0); }
+  }
+  .empty-state {
+    background: linear-gradient(135deg, rgba(99,102,241,.04) 0%, rgba(6,182,212,.04) 100%);
+    border: 1px dashed rgba(148,163,184,.15);
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ============== APP SHELL ============== -->
+<div id="app" class="min-h-screen flex">
+
+  <!-- SIDEBAR (desktop + mobile drawer) -->
+  <aside id="sidebar" class="sidebar fixed lg:sticky top-0 left-0 z-40 h-screen w-52 bg-slate-950/95 backdrop-blur-xl border-r border-slate-800/60 flex flex-col">
+    <div class="h-12 flex items-center gap-2.5 px-4 border-b border-slate-800/60">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-soft shrink-0">
+        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 17l5-5 4 4 8-9" />
+          <path d="M21 7v5h-5" />
+        </svg>
+      </div>
+      <div class="leading-tight">
+        <div class="font-bold text-white tracking-tight text-sm">TradersPulse</div>
+        <div class="text-[10px] text-slate-500 -mt-0.5">Capital-First</div>
+      </div>
+      <button class="lg:hidden ml-auto p-1.5 rounded-lg hover:bg-slate-800/60" onclick="toggleSidebar()">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto scrollbar-thin px-2 py-3 space-y-0.5">
+      <div class="px-2 pb-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Overview</div>
+      <a href="#dashboard" class="sidebar-link active flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-800/40">
+        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Dashboard
+      </a>
+      <a href="#schedule" class="sidebar-link flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-800/40">
+        <i data-lucide="calendar-range" class="w-3.5 h-3.5"></i> Master Schedule
+      </a>
+      <a href="#journey" data-auth-only class="sidebar-link hidden flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-800/40">
+        <i data-lucide="map" class="w-3.5 h-3.5"></i> My Journey
+      </a>
+      <a href="#performance" data-auth-only class="sidebar-link hidden flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-800/40">
+        <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i> Performance
+      </a>
+      <a href="#account" data-auth-only class="sidebar-link hidden flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-800/40">
+        <i data-lucide="wallet" class="w-3.5 h-3.5"></i> Account
+      </a>
+
+      <div data-auth-only class="hidden px-2 pt-4 pb-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tools</div>
+      <a data-auth-only href="#" class="sidebar-link hidden flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-800/40">
+        <i data-lucide="file-down" class="w-3.5 h-3.5"></i> Export
+      </a>
+      <a data-auth-only href="#" class="sidebar-link hidden flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-800/40">
+        <i data-lucide="settings" class="w-3.5 h-3.5"></i> Settings
+      </a>
+    </nav>
+
+    <div class="p-3 border-t border-slate-800/60">
+      <div class="rounded-lg bg-gradient-to-br from-brand-900/30 to-slate-900/30 border border-brand-500/10 p-3">
+        <div class="flex items-center gap-1.5 mb-1">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-brand-400"></i>
+          <div class="text-[11px] font-semibold text-brand-300">Capital Preserved</div>
+        </div>
+        <p class="text-[10px] text-slate-400 leading-relaxed">Markets never stop. Protect your capital — opportunities will always return.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="flex-1 min-w-0 flex flex-col">
+
+    <!-- HEADER -->
+    <header class="sticky top-0 z-30 glass border-b border-slate-800/60">
+      <div class="h-12 px-3 sm:px-4 lg:px-6 flex items-center gap-3">
+        <button class="lg:hidden p-1.5 rounded-lg hover:bg-slate-800/60" onclick="toggleSidebar()">
+          <i data-lucide="menu" class="w-4 h-4"></i>
+        </button>
+        <div class="flex-1 min-w-0">
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold leading-none">Dashboard</div>
+          <div class="text-xs font-semibold text-white truncate leading-tight mt-0.5" id="header-title">Protect your capital. Track every day.</div>
+        </div>
+
+        <!-- Pre-login: Login Button -->
+        <button id="btn-login" onclick="location.href='/oauth/login'" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-soft transition">
+          <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Login with Deriv</span>
+        </button>
+
+        <!-- Post-login: Account Card (hidden until logged in) -->
+        <div id="account-card" class="hidden">
+          <!-- rendered dynamically -->
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main id="main-content" class="flex-1 px-3 sm:px-4 lg:px-6 py-4 lg:py-6 space-y-6">
+
+      <!-- ============== PRE-LOGIN: HERO ============== -->
+      <section id="hero-section" class="fade-in">
+        <div class="relative overflow-hidden rounded-2xl hero-grid border border-slate-800/40 bg-gradient-to-br from-slate-900 to-slate-950">
+          <div class="relative px-5 sm:px-8 lg:px-10 py-10 lg:py-14 max-w-4xl">
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-300 text-[11px] font-semibold mb-4">
+              <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+              Capital-First Trading Intelligence
+            </div>
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-[1.1]">
+              Protect Your Capital.<br/>
+              <span class="bg-gradient-to-r from-brand-400 to-cyan-400 bg-clip-text text-transparent">Opportunities Never Stop.</span>
+            </h1>
+            <p class="mt-4 text-sm text-slate-400 max-w-2xl leading-relaxed">
+              Your trading capital is your greatest asset. Markets create endless opportunities, but replacing lost capital is much harder.
+            </p>
+            <div class="mt-6 flex flex-wrap gap-2.5">
+               <button onclick="location.href='/oauth/login'" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold shadow-soft transition">
+                 <i data-lucide="log-in" class="w-4 h-4"></i> Connect Deriv Account
+               </button>
+               <a href="#schedule-setup" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-600 text-slate-200 text-sm font-semibold transition">
+                 <i data-lucide="calendar-range" class="w-4 h-4"></i> Plan Your Schedule
+               </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== JOURNEY LOCK ============== -->
+      <section id="journey-section" class="hidden fade-in view-journey" data-auth-only>
+        <div class="glass-card card-accent-purple rounded-xl overflow-hidden">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-1.5 text-brand-400 text-[11px] font-semibold uppercase tracking-wider">
+                <i data-lucide="map" class="w-3.5 h-3.5"></i> Trading Journey
+              </div>
+              <h2 class="mt-0.5 text-xl font-bold text-white tracking-tight">My Locked Journey</h2>
+              <p class="mt-0.5 text-xs text-slate-400">Permanent trading plan. Once locked, it cannot be edited — only reset.</p>
+            </div>
+            <button onclick="showResetJourneyModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-500/30 hover:bg-rose-500/10 text-rose-400 text-xs font-semibold transition">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset Journey
+            </button>
+          </div>
+          <div id="journey-details" class="p-4 sm:p-5">
+            <!-- populated dynamically -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== MASTER SCHEDULE SETUP ============== -->
+      <section id="schedule-setup" class="fade-in view-schedule">
+        <div class="glass-card card-accent-blue rounded-xl overflow-hidden">
+          <div class="px-4 sm:px-5 py-4 border-b border-slate-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-1.5 text-blue-400 text-[11px] font-semibold uppercase tracking-wider">
+                <i data-lucide="calendar-check" class="w-3.5 h-3.5"></i> Planning
+              </div>
+              <h2 class="mt-0.5 text-xl font-bold text-white tracking-tight">Master Schedule</h2>
+              <p class="mt-0.5 text-xs text-slate-400">Set your trading goal to generate your complete trading plan.</p>
+            </div>
+            <div class="text-[11px] text-slate-500 mono">Compound growth model</div>
+          </div>
+
+          <form id="schedule-form" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-300 mb-1.5">Initial Balance</label>
+              <div class="relative">
+                <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs">$</span>
+                <input type="number" id="f-balance" min="1" step="0.01" value="100" required
+                  class="w-full pl-7 pr-2.5 py-2 rounded-lg bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-2 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200 placeholder:text-slate-500"/>
+              </div>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-300 mb-1.5">Trading Days</label>
+              <input type="number" id="f-days" min="1" max="365" value="30" required
+                class="w-full px-2.5 py-2 rounded-lg bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-2 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200 placeholder:text-slate-500"/>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-300 mb-1.5">Daily Growth Rate (%)</label>
+              <input type="number" id="f-rate" min="0.01" max="100" step="0.01" value="5" required
+                class="w-full px-2.5 py-2 rounded-lg bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-2 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200 placeholder:text-slate-500"/>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-300 mb-1.5">Cycle Start Date</label>
+              <input type="date" id="f-start" required
+                class="w-full px-2.5 py-2 rounded-lg bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-2 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200 placeholder:text-slate-500"/>
+            </div>
+            <div class="sm:col-span-2 lg:col-span-4 flex justify-end">
+              <button type="submit" class="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold shadow-soft transition">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                Generate Master Schedule
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============== SCHEDULE OUTPUT (pre-login) ============== -->
+      <section id="schedule-output" class="hidden fade-in">
+        <div class="glass-card rounded-xl overflow-hidden">
+          <div class="px-4 sm:px-5 py-3 border-b border-slate-800/60 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <h3 class="text-base font-bold text-white">Generated Schedule</h3>
+              <p class="text-[11px] text-slate-400 mt-0.5" id="schedule-meta"></p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="exportSchedulePDF()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800/60 text-xs font-medium text-slate-300 transition">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Export PDF
+              </button>
+              <button onclick="exportScheduleExcel()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800/60 text-xs font-medium text-slate-300 transition">
+                <i data-lucide="table" class="w-3.5 h-3.5"></i> Export Excel
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-900/60 text-[10px] uppercase tracking-wider text-slate-400">
+                 <tr>
+                   <th class="text-left px-3 py-2 font-semibold">Day</th>
+                   <th class="text-right px-3 py-2 font-semibold">Expected Start</th>
+                   <th class="text-right px-3 py-2 font-semibold">Expected End</th>
+                   <th class="text-right px-3 py-2 font-semibold">Daily Profit Target</th>
+                   <th class="text-right px-3 py-2 font-semibold">Required %</th>
+                   <th class="text-right px-3 py-2 font-semibold">Actual Balance</th>
+                   <th class="text-right px-3 py-2 font-semibold">Difference</th>
+                 </tr>
+              </thead>
+              <tbody id="schedule-tbody" class="divide-y divide-slate-800/60"></tbody>
+            </table>
+          </div>
+          <div class="px-4 sm:px-5 py-3 bg-slate-900/40 border-t border-slate-800/60 text-[11px] text-slate-400 leading-relaxed">
+            <i data-lucide="info" class="w-3 h-3 inline-block mr-1 -mt-0.5 text-brand-400"></i>
+            Your master schedule is generated from the goal you set above. After logging in, your actual account balance will automatically be compared with the expected balance for each trading day.
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== POST-LOGIN: ACCOUNT CARD (in-header) + TODAY'S TARGET ============== -->
+      <section id="today-target" class="hidden fade-in view-dashboard view-journey" data-auth-only>
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-semibold text-brand-400 uppercase tracking-wider">Today</span>
+              <span id="kpi-day-badge" class="chip bg-brand-500/15 text-brand-300 border border-brand-500/20">Day —</span>
+            </div>
+            <h2 class="text-lg font-bold text-white tracking-tight mt-0.5">Today's Target</h2>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot text-emerald-500"></span>
+            <span>Live sync</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
+          <!-- Card 1 -->
+          <div class="glass-card rounded-lg p-3 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Expected Starting</span>
+              <i data-lucide="wallet" class="w-3.5 h-3.5 text-slate-500"></i>
+            </div>
+            <div class="mt-1.5 text-lg font-bold text-white mono" id="kpi-start">—</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Capital at day start</div>
+          </div>
+          <!-- Card 2 -->
+          <div class="glass-card rounded-lg p-3 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Today's Profit</span>
+              <i data-lucide="target" class="w-3.5 h-3.5 text-brand-400"></i>
+            </div>
+            <div class="mt-1.5 text-lg font-bold text-brand-300 mono" id="kpi-target">—</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Target to secure today</div>
+          </div>
+          <!-- Card 3 -->
+          <div class="glass-card rounded-lg p-3 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Today's Target %</span>
+              <i data-lucide="percent" class="w-3.5 h-3.5 text-slate-500"></i>
+            </div>
+            <div class="mt-1.5 text-lg font-bold text-white mono" id="kpi-rate">—</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Locked daily target</div>
+          </div>
+          <!-- Card 4 -->
+          <div class="glass-card rounded-lg p-3 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Expected End</span>
+              <i data-lucide="trending-up" class="w-3.5 h-3.5 text-slate-500"></i>
+            </div>
+            <div class="mt-1.5 text-lg font-bold text-white mono" id="kpi-expected">—</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">End of day target</div>
+          </div>
+          <!-- Card 5 -->
+          <div class="glass-card rounded-lg p-3 flex flex-col bg-gradient-to-br from-emerald-500/10 to-slate-900/40 border border-emerald-500/10">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Live Balance</span>
+              <span class="relative flex h-1.5 w-1.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+              </span>
+            </div>
+            <div class="mt-1.5 text-lg font-bold text-emerald-400 mono" id="kpi-live">—</div>
+            <div class="text-[10px] text-emerald-500/80 mt-0.5">Current account balance</div>
+          </div>
+          <!-- Card 6 -->
+          <div class="glass-card rounded-lg p-3 flex flex-col">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Difference</span>
+              <i data-lucide="minus-circle" class="w-3.5 h-3.5 text-slate-500"></i>
+            </div>
+            <div class="mt-1.5 text-lg font-bold text-slate-200 mono" id="kpi-remaining">—</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Ahead / Behind target</div>
+          </div>
+        </div>
+
+        <!-- Today's progress -->
+        <div class="mt-4 glass-card rounded-lg p-3">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div class="text-xs font-semibold text-white">Today's Progress</div>
+              <div class="text-[11px] text-slate-400" id="kpi-status">Pending</div>
+            </div>
+            <div class="text-lg font-bold text-white mono" id="today-progress-pct">0%</div>
+          </div>
+          <div class="h-2.5 w-full bg-slate-800/80 rounded-full overflow-hidden">
+            <div id="today-progress-fill" class="h-full progress-bar rounded-full transition-all duration-500" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- Overall journey cycle progress -->
+        <div class="mt-3 glass-card rounded-lg p-3">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div class="text-xs font-semibold text-white">Journey Completion</div>
+              <div class="text-[11px] text-slate-400" id="progress-label">Day 0 of 0</div>
+            </div>
+            <div class="text-lg font-bold text-white mono" id="progress-pct">0%</div>
+          </div>
+          <div class="h-2.5 w-full bg-slate-800/80 rounded-full overflow-hidden">
+            <div id="progress-fill" class="h-full progress-bar rounded-full transition-all duration-500" style="width:0%"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== POST-LOGIN: MASTER SCHEDULE (live) ============== -->
+      <section id="live-schedule" class="hidden fade-in view-dashboard view-schedule" data-auth-only>
+        <div class="glass-card rounded-xl overflow-hidden">
+          <div class="px-4 sm:px-5 py-3 border-b border-slate-800/60 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <h3 class="text-base font-bold text-white">Master Schedule — Live</h3>
+              <p class="text-[11px] text-slate-400 mt-0.5">Actual balances compared against your plan in real time.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="exportSchedulePDF()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800/60 text-xs font-medium text-slate-300">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Export PDF
+              </button>
+              <button onclick="exportScheduleExcel()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800/60 text-xs font-medium text-slate-300">
+                <i data-lucide="table" class="w-3.5 h-3.5"></i> Export Excel
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-900/60 text-[10px] uppercase tracking-wider text-slate-400 sticky top-0">
+                <tr>
+                  <th class="text-left px-3 py-2 font-semibold">Day</th>
+                  <th class="text-right px-3 py-2 font-semibold">Expected Start</th>
+                  <th class="text-right px-3 py-2 font-semibold">Expected End</th>
+                  <th class="text-right px-3 py-2 font-semibold">Daily Profit</th>
+                  <th class="text-right px-3 py-2 font-semibold">Required %</th>
+                  <th class="text-right px-3 py-2 font-semibold">Actual Balance</th>
+                  <th class="text-right px-3 py-2 font-semibold">Difference</th>
+                  <th class="text-center px-3 py-2 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody id="live-schedule-tbody" class="divide-y divide-slate-800/60"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== OPTION CONTRACT PERFORMANCE ============== -->
+      <section id="contracts-section" class="hidden fade-in view-performance" data-auth-only>
+        <div class="glass-card rounded-xl overflow-hidden">
+          <div class="px-4 sm:px-5 py-3 border-b border-slate-800/60 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-1.5 text-brand-400 text-[11px] font-semibold uppercase tracking-wider">
+                <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i> Today's Performance
+              </div>
+              <h3 class="text-base font-bold text-white mt-0.5">Today's Trading Activity</h3>
+              <p class="text-[11px] text-slate-400 mt-0.5">Only today's completed contracts for the selected account.</p>
+            </div>
+          </div>
+
+          <!-- Per-account stat strip -->
+          <div id="contracts-stats" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2.5 p-4 border-b border-slate-800/60"></div>
+
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-900/60 text-[10px] uppercase tracking-wider text-slate-400">
+                <tr>
+                  <th class="text-left px-3 py-2 font-semibold">Contract Type</th>
+                  <th class="text-right px-3 py-2 font-semibold">Trades</th>
+                  <th class="text-right px-3 py-2 font-semibold">Wins</th>
+                  <th class="text-right px-3 py-2 font-semibold">Losses</th>
+                  <th class="text-right px-3 py-2 font-semibold">Win %</th>
+                  <th class="text-right px-3 py-2 font-semibold">Net Profit</th>
+                  <th class="text-right px-3 py-2 font-semibold">Avg Profit</th>
+                </tr>
+              </thead>
+              <tbody id="contracts-tbody" class="divide-y divide-slate-800/60"></tbody>
+            </table>
+          </div>
+          <div id="contracts-empty" class="hidden px-4 sm:px-5 py-10 text-center">
+            <div class="w-12 h-12 rounded-full bg-slate-800/60 border border-slate-700 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="bar-chart-3" class="w-5 h-5 text-slate-500"></i>
+            </div>
+            <p class="text-xs text-slate-500">No completed contracts yet. Trades will appear here automatically.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== ACCOUNT (OWN PAGE: LIFETIME PERFORMANCE) ============== -->
+      <section id="summary-section" class="hidden fade-in view-account" data-auth-only>
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-[10px] font-semibold text-brand-400 uppercase tracking-wider leading-none">Lifetime Performance</div>
+            <h2 class="text-lg font-bold text-white tracking-tight mt-0.5">Account</h2>
+          </div>
+          <button onclick="location.hash='#dashboard'" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800/60 text-xs font-medium text-slate-300 transition">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back to Dashboard
+          </button>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5" id="summary-grid">
+          <!-- populated dynamically -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="px-3 sm:px-4 lg:px-6 py-4 text-[11px] text-slate-500 border-t border-slate-800/60">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+        <div>© 2026 TradersPulse — Capital preservation analytics for Deriv Options traders.</div>
+        <div class="mono text-slate-600">v1.0 · Build 2026.07.15</div>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- SIDEBAR OVERLAY (mobile) -->
+<div id="sidebar-overlay" class="hidden fixed inset-0 bg-slate-900/40 z-30 lg:hidden" onclick="toggleSidebar()"></div>
+
+<!-- ============== LOGIN MODAL ============== -->
+<div id="login-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+  <div class="glass-card rounded-2xl w-full max-w-md overflow-hidden fade-in">
+    <div class="p-6 border-b border-slate-800/60 flex items-center justify-between">
+      <div>
+        <div class="text-xs font-semibold text-brand-400 uppercase tracking-wider">Secure Connect</div>
+        <h3 class="text-lg font-bold text-white mt-0.5">Login with Deriv</h3>
+      </div>
+      <button onclick="closeLoginModal()" class="p-2 rounded-lg hover:bg-slate-800/60 transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <p class="text-sm text-slate-400">Enter your Deriv API token to connect your account. Your token is stored locally in your browser only.</p>
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 mb-2">API Token</label>
+        <input id="api-token" type="password" placeholder="Paste your Deriv API token"
+          class="w-full px-3 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-2 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200 mono placeholder:text-slate-500"/>
+      </div>
+      <div class="flex items-start gap-2 text-xs text-slate-400">
+        <i data-lucide="shield" class="w-4 h-4 text-brand-400 mt-0.5 shrink-0"></i>
+        <span>We request <b class="text-slate-200">trade</b> and <b class="text-slate-200">account_manage</b> scopes only. No withdrawal permissions.</span>
+      </div>
+      <button onclick="location.href='/oauth/login'" class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold transition">
+        <i data-lucide="log-in" class="w-4 h-4"></i> Connect Account
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============== JOURNEY LOCK MODAL ============== -->
+<div id="journey-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+  <div class="glass-card rounded-2xl w-full max-w-lg overflow-hidden fade-in">
+    <div class="p-6 border-b border-slate-800/60 flex items-center justify-between">
+      <div>
+        <div class="text-xs font-semibold text-brand-400 uppercase tracking-wider">Lock Your Journey</div>
+        <h3 class="text-lg font-bold text-white">Start My Journey</h3>
+      </div>
+      <button onclick="closeJourneyModal()" class="p-2 rounded-lg hover:bg-slate-800/60">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <div class="p-6 space-y-4">
+      <p class="text-sm text-slate-400">Set your trading goals. Once locked, these values cannot be changed — only reset.</p>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-2">Initial Balance (USD)</label>
+          <input id="j-initial" type="number" min="1" step="0.01" value="1000" required
+            class="w-full px-3 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-4 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-2">Daily Target (%)</label>
+          <input id="j-rate" type="number" min="0.01" max="100" step="0.01" value="5" required
+            class="w-full px-3 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-4 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-2">Cycle Length (Days)</label>
+          <input id="j-days" type="number" min="1" max="365" value="30" required
+            class="w-full px-3 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-4 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-2">Start Date</label>
+          <input id="j-start" type="date" required
+            class="w-full px-3 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700 focus:border-brand-500 focus:ring-4 focus:ring-brand-900/40 outline-none transition text-sm text-slate-200"/>
+        </div>
+      </div>
+      <div class="flex items-start gap-2 text-xs text-slate-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 mt-0.5 shrink-0"></i>
+        <span>This action is irreversible. Your journey parameters will be permanently locked. You can only reset the entire journey.</span>
+      </div>
+      <button onclick="lockJourney()" class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold">
+        <i data-lucide="lock" class="w-4 h-4"></i> Lock Journey
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============== RESET JOURNEY CONFIRMATION ============== -->
+<div id="reset-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+  <div class="glass-card rounded-2xl w-full max-w-md overflow-hidden fade-in">
+    <div class="p-6 border-b border-slate-800/60">
+      <div class="text-xs font-semibold text-rose-400 uppercase tracking-wider">Danger Zone</div>
+      <h3 class="text-lg font-bold text-white mt-1">Reset Journey?</h3>
+    </div>
+    <div class="p-6 space-y-4">
+      <p class="text-sm text-slate-400">This will permanently delete your current journey and all associated data. This action cannot be undone.</p>
+      <div class="flex gap-3">
+        <button onclick="closeResetModal()" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800/60 text-slate-300 font-semibold transition">Cancel</button>
+        <button onclick="confirmResetJourney()" class="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold transition">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== ACCOUNT SWITCHER DROPDOWN ============== -->
+<div id="account-dropdown" class="hidden fixed z-50 w-80 glass-card rounded-xl overflow-hidden fade-in">
+  <div class="px-4 py-3 border-b border-slate-800/60">
+    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Switch Account</div>
+  </div>
+  <div id="account-list" class="max-h-80 overflow-y-auto scrollbar-thin"></div>
+  <div class="px-4 py-3 border-t border-slate-800/60 bg-slate-900/40">
+    <button onclick="logout()" class="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition">
+      <i data-lucide="log-out" class="w-4 h-4"></i> Disconnect
+    </button>
+</div>
+
+<script>
+/* =========================================================
+   TRADERSPULSE — APP CORE
+   ========================================================= */
+const state = {
+  isLoggedIn: false,
+  token: null,
+  accounts: [],
+  currentAccount: null,
+  schedule: null,
+  todayDay: 0,
+  contracts: [],
+  summary: {},
+  journey: null, // { id, initial_balance, daily_target_pct, cycle_length_days, start_date, days: [] }
+};
+
+function getSelected() {
+  return state.accounts.find(a => a.loginid === state.currentAccount) || null;
+}
+
+/* ---------- Utilities ---------- */
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d=2) => (Number(n)||0).toLocaleString(undefined, { minimumFractionDigits:d, maximumFractionDigits:d });
+const todayISO = () => new Date().toISOString().slice(0,10);
+
+/* ---------- Sidebar ---------- */
+function toggleSidebar() {
+  const sb = $('sidebar'), ov = $('sidebar-overlay');
+  sb.classList.toggle('open');
+  ov.classList.toggle('hidden');
+}
+document.querySelectorAll('.sidebar-link').forEach(a => {
+  a.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-link').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+    applyView();
+    if (window.innerWidth < 1024) toggleSidebar();
+  });
+});
+window.addEventListener('hashchange', applyView);
+
+/* ---------- Master Schedule Math ---------- */
+function buildSchedule({ initial, days, rate, startDate }) {
+  const rows = [];
+  let start = Number(initial);
+  const r = Number(rate)/100;
+  const base = new Date(startDate);
+  for (let i=1; i<=Number(days); i++) {
+    const end = start * (1 + r);
+    const profit = end - start;
+    const date = new Date(base); date.setDate(base.getDate() + (i-1));
+    rows.push({
+      day: i,
+      date: date.toISOString().slice(0,10),
+      start, end, profit,
+      rate: Number(rate),
+      actual: null,
+      diff: null,
+      status: 'pending'
+    });
+    start = end;
+  }
+  return { initial:Number(initial), days:Number(days), rate:Number(rate), startDate, rows };
+}
+
+/* Convert the server's journey-day rows into the canonical plan shape the
+   dashboard uses. Pure plan derivation only — no live balance is involved.
+   Server rows use: day_number, date, expected_start, expected_end. */
+function normalizeJourneyDays(rawDays, rate) {
+  if (!Array.isArray(rawDays)) return [];
+  return rawDays.map(d => {
+    const day = d.day || d.day_number;
+    const date = d.date;
+    const start = Number(d.start != null ? d.start : d.expected_start) || 0;
+    const end = Number(d.end != null ? d.end : d.expected_end) || 0;
+    return { day, date, start, end, profit: end - start, rate: Number(rate) };
+  });
+}
+/* Determine the current journey day from the locked start date:
+   Current Journey Day = Today − Locked Start Date. Never hardcoded. */
+function getCurrentJourneyDay() {
+  const j = state.journey;
+  if (!j || !j.start_date) return 1;
+  const start = new Date(j.start_date + 'T00:00:00');
+  const now = new Date(todayISO() + 'T00:00:00');
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const day = Math.floor((now - start) / msPerDay) + 1;
+  return day >= 1 ? day : 1;
+}
+
+/* Compute the live-derived actual/diff/status for a single journey day row,
+   given the selected account's current live balance. This is the single place
+   where "reality" is merged into the locked plan, so the Master Schedule and
+   Today's Target always stay synchronized. */
+function computeJourneyDay(r, live, journeyDay) {
+  const isToday = r.day === journeyDay;
+  const isPast = r.day < journeyDay;
+  let actual = null;
+  let status = 'pending';
+
+  if (isToday) {
+    actual = live;
+    status = (live - r.end) >= 0 ? 'complete' : 'behind';
+  } else if (isPast) {
+    // Completed day: realized once the live balance has reached this day's target.
+    if (live - r.end >= 0) { actual = r.end; status = 'complete'; }
+    else { actual = live > 0 ? live : null; status = 'missed'; }
+  } else {
+    actual = null;
+    status = 'pending';
+  }
+
+  // Difference = Actual Balance − Expected End (negative when behind target)
+  const diff = actual != null ? actual - r.end : null;
+  return { ...r, actual, diff, status };
+}
+
+function statusChipHtml(status) {
+  if (status === 'complete') return `<span class="chip status-ontrack">Complete</span>`;
+  if (status === 'behind') return `<span class="chip status-below">Behind</span>`;
+  if (status === 'missed') return `<span class="chip status-below">Missed</span>`;
+  return `<span class="chip status-pending">Pending</span>`;
+}
+
+  function renderPreLoginSchedule() {
+  const s = state.schedule; if (!s) return;
+  const tbody = $('schedule-tbody');
+  tbody.innerHTML = s.rows.map((r, i) => `
+    <tr class="table-row ${i%2===0?'bg-slate-800/20':''}">
+      <td class="px-4 py-3 font-medium text-slate-200">
+        <div>Day ${r.day}</div>
+        <div class="text-[11px] text-slate-500 mono">${r.date}</div>
+      </td>
+      <td class="px-4 py-3 text-right mono text-slate-400">${fmt(r.start)}</td>
+      <td class="px-4 py-3 text-right mono text-slate-400">${fmt(r.end)}</td>
+      <td class="px-4 py-3 text-right mono text-brand-400 font-semibold">+${fmt(r.profit)}</td>
+      <td class="px-4 py-3 text-right mono text-slate-400">${r.rate}%</td>
+       <td class="px-4 py-3 text-right mono text-slate-500">—</td>
+       <td class="px-4 py-3 text-right mono text-slate-500">—</td>
+      </tr>
+  `).join('');
+  $('schedule-meta').textContent = `${s.days} days · ${s.rate}% daily · starting ${fmt(s.initial)} · from ${s.startDate}`;
+  $('schedule-output').classList.remove('hidden');
+}
+
+  function renderLiveSchedule() {
+  const s = state.schedule; if (!s) return;
+  const selected = getSelected();
+  const live = selected ? selected.balance : 0;
+  const journeyDay = getCurrentJourneyDay();
+  const tbody = $('live-schedule-tbody');
+  tbody.innerHTML = s.rows.map((r, i) => {
+    const row = computeJourneyDay(r, live, journeyDay);
+    const isToday = r.day === journeyDay;
+    const actual = row.actual;
+    const diff = row.diff;
+    const statusChip = statusChipHtml(row.status);
+    const rowTone = row.status === 'complete' ? 'bg-emerald-500/5'
+      : (row.status === 'behind' || row.status === 'missed') ? 'bg-rose-500/5'
+      : isToday ? 'bg-brand-500/5' : (i%2===0 ? 'bg-slate-800/20' : '');
+
+    return `
+      <tr class="table-row ${rowTone}">
+        <td class="px-4 py-3 font-medium text-slate-200">
+          <div class="flex items-center gap-2">Day ${r.day} ${isToday ? '<span class="chip bg-brand-500/15 text-brand-300 border border-brand-500/20">Today</span>' : ''}</div>
+          <div class="text-[11px] text-slate-500 mono">${r.date}</div>
+        </td>
+        <td class="px-4 py-3 text-right mono text-slate-400">${fmt(r.start)}</td>
+        <td class="px-4 py-3 text-right mono text-slate-400">${fmt(r.end)}</td>
+        <td class="px-4 py-3 text-right mono text-brand-400 font-semibold">+${fmt(r.profit)}</td>
+        <td class="px-4 py-3 text-right mono text-slate-400">${r.rate}%</td>
+        <td class="px-4 py-3 text-right mono font-semibold ${actual!=null?'text-slate-200':'text-slate-500'}">${actual!=null?fmt(actual):'—'}</td>
+        <td class="px-4 py-3 text-right mono font-semibold ${diff==null?'text-slate-500':diff>=0?'text-emerald-400':'text-rose-400'}">${diff==null?'—':(diff>=0?'+':'')+fmt(diff)}</td>
+        <td class="px-4 py-3 text-center">${statusChip}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/* ---------- Today's Target ---------- */
+/* Today's Target is NOT calculated independently. It is simply the current
+   journey day's row from the Master Schedule, with the live Deriv balance
+   merged in. MasterSchedule[currentJourneyDay] and nothing else. */
+  function renderTodayTarget() {
+  const s = state.schedule; if (!s) return;
+  const selected = getSelected();
+  const live = selected ? selected.balance : 0;
+
+  // Current Journey Day = Today − Locked Start Date
+  const journeyDay = getCurrentJourneyDay();
+  state.todayDay = journeyDay;
+
+  // Index into the Master Schedule (clamp to valid range)
+  const idx = Math.min(Math.max(journeyDay, 1), s.rows.length) - 1;
+  const baseRow = s.rows[idx];
+  const row = computeJourneyDay(baseRow, live, journeyDay);
+
+  $('kpi-day-badge').textContent = `Day ${journeyDay} of ${s.days}`;
+  $('kpi-start').textContent = fmt(baseRow.start);        // Expected Starting Balance
+  $('kpi-target').textContent = baseRow.rate + '%';        // Daily Target %
+  $('kpi-rate').textContent = '+' + fmt(baseRow.profit);   // Today's Target (profit)
+  $('kpi-expected').textContent = fmt(baseRow.end);        // Expected Ending Balance
+  $('kpi-live').textContent = selected ? fmt(live) : '—';  // Current Live Balance
+
+  // Difference (Ahead / Behind) — same as Master Schedule: Expected End − Live
+  const diff = row.diff;
+  $('kpi-remaining').textContent = diff==null ? '—' : (diff>=0 ? '+' : '') + fmt(diff);
+  $('kpi-remaining').className = 'mt-1.5 text-lg font-bold ' + (diff==null ? 'text-slate-300' : diff>=0 ? 'text-emerald-400' : 'text-rose-400') + ' mono';
+
+  // Progress = (live - start) / (end - start), clamped 0..100
+  const span = (baseRow.end - baseRow.start) || 1;
+  let todayPct = ((live - baseRow.start) / span) * 100;
+  todayPct = Math.max(0, Math.min(100, todayPct));
+  $('today-progress-pct').textContent = todayPct.toFixed(0) + '%';
+  $('today-progress-fill').style.width = todayPct + '%';
+
+  $('kpi-status').textContent = row.status === 'complete' ? 'Complete' : (row.status === 'behind' ? 'Behind' : row.status === 'missed' ? 'Missed' : 'Pending');
+  $('kpi-status').className = 'mt-1 text-[11px] font-semibold ' +
+    (row.status === 'complete' ? 'text-emerald-400' : (row.status === 'behind' || row.status === 'missed') ? 'text-rose-400' : 'text-slate-400');
+
+  // Overall journey completion
+  const cyclePct = Math.min(100, Math.round((journeyDay / s.days) * 100));
+  $('progress-pct').textContent = cyclePct + '%';
+  $('progress-fill').style.width = cyclePct + '%';
+  $('progress-label').textContent = `Day ${journeyDay} of ${s.days}`;
+}
+
+/* ---------- Option Contract Performance ---------- */
+  function contractsForSelected() {
+    const selected = getSelected();
+    const loginid = selected ? selected.loginid : null;
+    return state.contracts.filter(c => !loginid || c.account_loginid === loginid || !c.account_loginid);
+  }
+  function computeStats(contracts) {
+    const today = todayISO();
+    const isToday = (c) => {
+      const t = c.date_expiry || c.sell_time || c.purchase_time;
+      if (!t) return false;
+      return new Date(Number(t) * 1000).toISOString().slice(0,10) === today;
+    };
+    const todayContracts = contracts.filter(isToday);
+
+    const tally = (list) => {
+      const trades = list.length;
+      let wins = 0, losses = 0, net = 0;
+      list.forEach(c => {
+        const p = Number(c.profit) || 0;
+        if (p > 0) wins++;
+        else if (p < 0) losses++;
+        net += p;
+      });
+      return { trades, wins, losses, net, winRate: trades ? (wins/trades*100) : 0 };
+    };
+
+    const todayStats = tally(todayContracts);
+    const overallStats = tally(contracts);
+
+    // Most traded market (by symbol) and most traded contract type
+    const bySymbol = {};
+    const byType = {};
+    contracts.forEach(c => {
+      const sym = c.symbol || 'Unknown';
+      const type = c.contract_type || 'Unknown';
+      bySymbol[sym] = (bySymbol[sym]||0)+1;
+      byType[type] = (byType[type]||0)+1;
+    });
+    const mostTradedMarket = Object.keys(bySymbol).sort((a,b)=>bySymbol[b]-bySymbol[a])[0] || '—';
+
+    // Current streaks (most recent contract first)
+    let winStreak = 0, lossStreak = 0;
+    const sorted = [...contracts].sort((a,b)=> (Number(b.date_expiry||b.sell_time||b.purchase_time)||0) - (Number(a.date_expiry||a.sell_time||a.purchase_time)||0));
+    let curWin = 0, curLoss = 0;
+    for (const c of sorted) {
+      const p = Number(c.profit) || 0;
+      if (p > 0) { curWin++; curLoss = 0; }
+      else if (p < 0) { curLoss++; curWin = 0; }
+      else { curWin = 0; curLoss = 0; }
+      if (curWin > winStreak) winStreak = curWin;
+      if (curLoss > lossStreak) lossStreak = curLoss;
+    }
+
+    return {
+      todayStats, overallStats, mostTradedMarket,
+      winStreak, lossStreak,
+      net: overallStats.net
+    };
+  }
+
+  function renderContracts() {
+  const all = contractsForSelected();
+  const stats = computeStats(all);
+  const today = todayISO();
+  const isToday = (c) => {
+    const t = c.date_expiry || c.sell_time || c.purchase_time;
+    if (!t) return false;
+    return new Date(Number(t) * 1000).toISOString().slice(0,10) === today;
+  };
+  const contracts = all.filter(isToday);
+  const acc = getSelected() || {};
+  const cur = acc.currency || 'USD';
+
+  const todayNet = stats.todayStats.net;
+  const statCards = [
+    { label:`Total Trades Today`, value: stats.todayStats.trades, tone:'slate' },
+    { label:`Total Wins Today`, value: stats.todayStats.wins, tone:'emerald' },
+    { label:`Total Losses Today`, value: stats.todayStats.losses, tone:'rose' },
+    { label:`Today's Win Rate`, value: stats.todayStats.trades ? stats.todayStats.winRate.toFixed(1)+'%' : '—', tone:'brand' },
+    { label:`Today's Net P/L`, value: (todayNet>=0?'+':'')+fmt(todayNet)+' '+cur, tone: todayNet>=0?'emerald':'rose', isText:true },
+  ];
+  const toneMap = { slate:'text-slate-400', emerald:'text-emerald-400', rose:'text-rose-400', brand:'text-brand-400', amber:'text-amber-400' };
+  $('contracts-stats').innerHTML = statCards.map(s => `
+    <div class="glass-card rounded-lg p-2.5">
+      <div class="text-[10px] font-semibold uppercase tracking-wider ${toneMap[s.tone]} mb-1">${s.label}</div>
+      <div class="text-base font-bold text-white ${s.isText?'':'mono'}">${s.value}</div>
+    </div>
+  `).join('');
+
+  const groups = {};
+  contracts.forEach(c => {
+    const type = c.contract_type || 'Unknown';
+    if (!groups[type]) groups[type] = { type, trades:0, wins:0, losses:0, net:0 };
+    groups[type].trades++;
+    const profit = Number(c.profit)||0;
+    if (profit > 0) groups[type].wins++;
+    else if (profit < 0) groups[type].losses++;
+    groups[type].net += profit;
+  });
+  const rows = Object.values(groups).sort((a,b)=>b.trades-a.trades);
+  const tbody = $('contracts-tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = '';
+    $('contracts-empty').classList.remove('hidden');
+    return;
+  }
+  $('contracts-empty').classList.add('hidden');
+  tbody.innerHTML = rows.map((g, i) => {
+    const winPct = g.trades ? (g.wins/g.trades*100) : 0;
+    const avg = g.trades ? g.net/g.trades : 0;
+    const barColor = winPct>=70?'bg-emerald-500':winPct>=50?'bg-amber-500':'bg-rose-500';
+    return `
+      <tr class="table-row ${i%2===0?'bg-slate-800/20':''}">
+        <td class="px-4 py-3">
+          <div class="font-semibold text-slate-200">${typeLabel(g.type)}</div>
+          <div class="mt-1.5 h-1 w-24 bg-slate-700 rounded-full overflow-hidden">
+            <div class="${barColor} h-full rounded-full transition-all duration-500" style="width:${winPct}%"></div>
+          </div>
+        </td>
+        <td class="px-4 py-3 text-right mono text-slate-400">${g.trades}</td>
+        <td class="px-4 py-3 text-right mono text-emerald-400 font-semibold">${g.wins}</td>
+        <td class="px-4 py-3 text-right mono text-rose-400 font-semibold">${g.losses}</td>
+        <td class="px-4 py-3 text-right mono font-semibold text-slate-200">${winPct.toFixed(1)}%</td>
+        <td class="px-4 py-3 text-right mono font-semibold ${g.net>=0?'text-emerald-400':'text-rose-400'}">${g.net>=0?'+':''}${fmt(g.net)}</td>
+        <td class="px-4 py-3 text-right mono text-slate-400">${avg>=0?'+':''}${fmt(avg)}</td>
+      </tr>
+    `;
+  }).join('');
+
+}
+function typeLabel(t){
+  const map = {
+    'DIGITOVER':'Digit Over','DIGITUNDER':'Digit Under','DIGITODD':'Digit Odd','DIGITEVEN':'Digit Even',
+    'DIGITMATCH':'Digit Match','DIGITDIFF':'Digit Differs','CALL':'Rise','PUT':'Fall',
+    'CALLPUT':'Higher/Lower','higher':'Higher','lower':'Lower','ONETOUCH':'Touch','NOTOUCH':'No Touch'
+  };
+  return map[t] || t;
+}
+
+/* ---------- Account Summary (own page: long-term analytics) ---------- */
+  function renderSummary() {
+  const selected = getSelected();
+  const acc = selected || {};
+  const cur = acc.currency || 'USD';
+  const contracts = (state.contracts || []).filter(c => Number(c.profit) != 0 || c.profit === 0);
+
+  const total = contracts.length;
+  const wins = contracts.filter(c => Number(c.profit) > 0).length;
+  const losses = contracts.filter(c => Number(c.profit) < 0).length;
+  const net = contracts.reduce((s, c) => s + Number(c.profit || 0), 0);
+  const winRate = total ? (wins / total * 100) : 0;
+  const avgProfit = wins ? contracts.filter(c => Number(c.profit) > 0).reduce((s, c) => s + Number(c.profit), 0) / wins : 0;
+  const avgLoss = losses ? contracts.filter(c => Number(c.profit) < 0).reduce((s, c) => s + Number(c.profit), 0) / losses : 0;
+  const largestWin = contracts.reduce((m, c) => Math.max(m, Number(c.profit || 0)), 0);
+  const largestLoss = contracts.reduce((m, c) => Math.min(m, Number(c.profit || 0)), 0);
+  const roi = (state.journey && state.journey.initial_balance > 0)
+    ? (net / state.journey.initial_balance * 100)
+    : 0;
+
+  // Best / worst trading day (by calendar day)
+  const byDay = {};
+  contracts.forEach(c => {
+    const t = c.date_expiry || c.sell_time || c.purchase_time;
+    if (!t) return;
+    const day = new Date(Number(t) * 1000).toISOString().slice(0, 10);
+    byDay[day] = (byDay[day] || 0) + Number(c.profit || 0);
+  });
+  const dayEntries = Object.entries(byDay);
+  const bestDay = dayEntries.length ? dayEntries.reduce((a, b) => b[1] > a[1] ? b : a) : null;
+  const worstDay = dayEntries.length ? dayEntries.reduce((a, b) => b[1] < a[1] ? b : a) : null;
+
+  // Most traded market
+  const bySymbol = {};
+  contracts.forEach(c => { const s = c.symbol || 'Unknown'; bySymbol[s] = (bySymbol[s] || 0) + 1; });
+  const mostTraded = Object.keys(bySymbol).sort((a, b) => bySymbol[b] - bySymbol[a])[0] || '—';
+
+  // Most traded contract type
+  const byType = {};
+  contracts.forEach(c => { const t = c.contract_type || 'Unknown'; byType[t] = (byType[t] || 0) + 1; });
+  const mostTradedContract = typeLabel(Object.keys(byType).sort((a, b) => byType[b] - byType[a])[0] || '—');
+
+  // Lifetime winning / losing streaks (most recent first)
+  let winStreak = 0, lossStreak = 0;
+  const sortedC = [...contracts].sort((a, b) =>
+    (Number(b.date_expiry || b.sell_time || b.purchase_time) || 0) -
+    (Number(a.date_expiry || a.sell_time || a.purchase_time) || 0));
+  let curWin = 0, curLoss = 0;
+  for (const c of sortedC) {
+    const p = Number(c.profit) || 0;
+    if (p > 0) { curWin++; curLoss = 0; }
+    else if (p < 0) { curLoss++; curWin = 0; }
+    else { curWin = 0; curLoss = 0; }
+    if (curWin > winStreak) winStreak = curWin;
+    if (curLoss > lossStreak) lossStreak = curLoss;
+  }
+
+  const startBalance = state.journey ? Number(state.journey.initial_balance) : (Number(acc.balance) - net);
+  const pct = (v) => (v >= 0 ? '+' : '') + fmt(v);
+  const money = (v) => pct(v) + ' ' + cur;
+
+  const items = [
+    { label:'Current Balance', value: fmt(acc.balance != null ? acc.balance : 0) + ' ' + cur, icon:'wallet', tone:'emerald', isText:true },
+    { label:'Starting Journey Balance', value: fmt(startBalance) + ' ' + cur, icon:'flag', tone:'brand', isText:true },
+    { label:'Login ID', value: acc.loginid || state.currentAccount || '—', icon:'user', tone:'slate', isText:true, mono:true },
+    { label:'Account Type', value: acc.is_virtual ? 'Demo' : 'Real', icon: acc.is_virtual ? 'flask-conical' : 'shield-check', tone: acc.is_virtual ? 'sky' : 'emerald', isText:true },
+    { label:'Currency', value: cur, icon:'coins', tone:'slate', isText:true },
+    { label:'Total Trades', value: total, icon:'activity', tone:'slate' },
+    { label:'Total Wins', value: wins, icon:'trophy', tone:'emerald' },
+    { label:'Total Losses', value: losses, icon:'alert-triangle', tone:'rose' },
+    { label:'Overall Win Rate', value: winRate.toFixed(2) + '%', icon:'percent', tone:'brand' },
+    { label:'ROI', value: money(roi) , icon:'trending-up', tone: roi >= 0 ? 'emerald' : 'rose', isText:true },
+    { label:'Net Profit', value: money(net), icon:'banknote', tone: net >= 0 ? 'emerald' : 'rose', isText:true },
+    { label:'Best Trading Day', value: bestDay ? `${bestDay[0]}` : '—', sub: bestDay ? money(bestDay[1]) : '', icon:'calendar-check', tone:'emerald', isText:true },
+    { label:'Worst Trading Day', value: worstDay ? `${worstDay[0]}` : '—', sub: worstDay ? money(worstDay[1]) : '', icon:'calendar-x', tone:'rose', isText:true },
+    { label:'Largest Win', value: money(largestWin), icon:'arrow-up-right', tone:'emerald', isText:true },
+    { label:'Largest Loss', value: money(largestLoss), icon:'arrow-down-right', tone:'rose', isText:true },
+    { label:'Average Profit', value: money(avgProfit), icon:'plus-circle', tone:'emerald', isText:true },
+    { label:'Average Loss', value: money(avgLoss), icon:'minus-circle', tone:'rose', isText:true },
+    { label:'Most Traded Market', value: mostTraded, icon:'layers', tone:'amber', isText:true },
+    { label:'Most Traded Contract', value: mostTradedContract, icon:'box', tone:'amber', isText:true },
+    { label:'Winning Streak', value: winStreak > 0 ? '🔥 ' + winStreak : '—', icon:'flame', tone:'emerald', isText:true },
+    { label:'Losing Streak', value: lossStreak > 0 ? '❄ ' + lossStreak : '—', icon:'snowflake', tone:'rose', isText:true },
+  ];
+
+  const toneMap = {
+    slate:'text-slate-400', emerald:'text-emerald-400', rose:'text-rose-400',
+    brand:'text-brand-400', amber:'text-amber-400', sky:'text-sky-400'
+  };
+  const cardAccents = {
+    slate:'', emerald:'card-accent-green', rose:'card-accent-red',
+    brand:'card-accent-purple', amber:'card-accent-orange', sky:'card-accent-blue'
+  };
+  $('summary-grid').innerHTML = items.map(it => `
+    <div class="glass-card ${cardAccents[it.tone]||''} rounded-xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">${it.label}</span>
+        <i data-lucide="${it.icon}" class="w-4 h-4 ${toneMap[it.tone]||'text-slate-500'}"></i>
+      </div>
+      <div class="mt-2.5 text-xl font-bold text-white ${it.isText?'':'mono'}">${it.value}</div>
+      ${it.sub ? `<div class="mt-1 text-xs text-slate-500">${it.sub}</div>` : ''}
+    </div>
+  `).join('');
+  lucide.createIcons();
+}
+
+/* ---------- Account Card (header) ---------- */
+  function renderAccountCard() {
+  const acc = getSelected();
+  if (!acc) {
+    return;
+  }
+  const isReal = !acc.is_virtual;
+  const flag = isReal ? '🇺🇸' : '';
+  const badge = isReal
+    ? `<span class="chip bg-emerald-50 text-emerald-700 border border-emerald-100">REAL</span>`
+    : `<span class="chip bg-sky-50 text-sky-700 border border-sky-100">DEMO</span>`;
+
+  $('account-card').innerHTML = `
+    <button onclick="toggleAccountDropdown(event)" class="inline-flex items-center gap-3 pl-3 pr-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-slate-600 transition">
+      <div class="text-left">
+        <div class="flex items-center gap-2">
+          ${flag ? `<span class="text-sm">${flag}</span>` : ''}
+          ${badge}
+          <span class="mono text-xs font-semibold text-white">${acc.loginid}</span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-0.5">
+          <span class="mono font-semibold text-emerald-400">${fmt(acc.balance)}</span>
+          <span class="ml-1">${acc.currency}</span>
+        </div>
+      </div>
+      <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+    </button>
+  `;
+  lucide.createIcons();
+
+}
+
+function toggleAccountDropdown(e) {
+  e.stopPropagation();
+  const dd = $('account-dropdown');
+  if (dd.classList.contains('hidden')) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 8) + 'px';
+    dd.style.right = (window.innerWidth - rect.right) + 'px';
+    dd.style.left = 'auto';
+    renderAccountList();
+    dd.classList.remove('hidden');
+  } else {
+    dd.classList.add('hidden');
+  }
+}
+document.addEventListener('click', (e) => {
+  const dd = $('account-dropdown');
+  if (!dd.classList.contains('hidden') && !dd.contains(e.target)) dd.classList.add('hidden');
+});
+
+  function renderAccountList() {
+  const selected = getSelected();
+  $('account-list').innerHTML = state.accounts.map(a => {
+    const active = a.loginid === state.currentAccount;
+    const isReal = !a.is_virtual;
+    return `
+      <button onclick="switchAccount('${a.loginid}')" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-800/40 border-b border-slate-800/60 text-left ${active?'bg-brand-500/10':''}">
+        <div class="w-9 h-9 rounded-lg ${isReal?'bg-emerald-500/15 text-emerald-400':'bg-sky-500/15 text-sky-400'} flex items-center justify-center text-sm font-bold">
+          ${isReal?'R':'D'}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="mono text-sm font-semibold text-slate-200">${a.loginid}</span>
+            ${isReal?'<span class="chip status-ontrack">REAL</span>':'<span class="chip" style="background:rgba(56,189,248,.1);color:#38bdf8;border:1px solid rgba(56,189,248,.15)">DEMO</span>'}
+          </div>
+          <div class="text-[11px] text-slate-500 truncate">${a.landing_company_shortcode||''} · ${a.currency||''}</div>
+        </div>
+        ${active?'<i data-lucide="check" class="w-4 h-4 text-brand-400"></i>':''}
+      </button>
+    `;
+  }).join('');
+  lucide.createIcons();
+
+}
+
+function switchAccount(loginid) {
+  state.currentAccount = loginid;
+  state.contracts = [];
+  state.portfolio = null;
+  state.profitTable = null;
+  $('account-dropdown').classList.add('hidden');
+
+  refreshAll();
+}
+
+/* ---------- Journey Lock System ---------- */
+function showJourneyModal() {
+  $('journey-modal').classList.remove('hidden');
+  const today = new Date().toISOString().slice(0, 10);
+  const startDateInput = $('j-start');
+  if (startDateInput && !startDateInput.value) {
+    startDateInput.value = today;
+  }
+  lucide.createIcons();
+}
+
+function closeJourneyModal() {
+  $('journey-modal').classList.add('hidden');
+}
+
+function showResetJourneyModal() {
+  $('reset-modal').classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function closeResetModal() {
+  $('reset-modal').classList.add('hidden');
+}
+
+async function lockJourney() {
+  const initial_balance = parseFloat($('j-initial').value);
+  const daily_target_pct = parseFloat($('j-rate').value);
+  const cycle_length_days = parseInt($('j-days').value, 10);
+  const start_date = $('j-start').value;
+
+  if (!initial_balance || !daily_target_pct || !cycle_length_days || !start_date) {
+    alert('Please fill in all journey fields.');
+    return;
+  }
+
+  try {
+    const res = await api('/api/journey');
+    if (res.journey && res.journey.id) {
+      if (!confirm('You already have a locked journey. Resetting will delete it permanently. Continue?')) {
+        return;
+      }
+    }
+  } catch (e) {
+    console.error('Journey check failed:', e);
+  }
+
+  try {
+    const res = await fetch('/api/journey', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initial_balance, daily_target_pct, cycle_length_days, start_date })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to lock journey');
+
+    state.journey = data.journey;
+    state.schedule = {
+      initial: data.journey.initial_balance,
+      days: data.journey.cycle_length_days,
+      rate: data.journey.daily_target_pct,
+      startDate: data.journey.start_date,
+      rows: normalizeJourneyDays(data.journey.days, data.journey.daily_target_pct)
+    };
+
+    closeJourneyModal();
+    renderJourney();
+    renderLiveSchedule();
+    renderTodayTarget();
+  } catch (e) {
+    console.error('Lock journey failed:', e);
+    alert(e.message);
+  }
+}
+
+async function confirmResetJourney() {
+  try {
+    const res = await fetch('/api/journey', { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to reset journey');
+
+    state.journey = null;
+    state.schedule = null;
+    state.todayDay = 0;
+    closeResetModal();
+    renderJourney();
+    applyLoggedInUI();
+  } catch (e) {
+    console.error('Reset journey failed:', e);
+    alert(e.message);
+  }
+}
+
+async function loadJourney() {
+  try {
+    const res = await api('/api/journey');
+    if (res.journey && res.journey.id) {
+      state.journey = res.journey;
+      state.schedule = {
+        initial: res.journey.initial_balance,
+        days: res.journey.cycle_length_days,
+        rate: res.journey.daily_target_pct,
+        startDate: res.journey.start_date,
+        rows: normalizeJourneyDays(res.journey.days, res.journey.daily_target_pct)
+      };
+    } else {
+      state.journey = null;
+      state.schedule = null;
+    }
+  } catch (e) {
+    console.error('Load journey failed:', e);
+    state.journey = null;
+    state.schedule = null;
+  }
+  renderJourney();
+}
+
+function renderJourney() {
+  const journeySection = $('journey-section');
+  const details = $('journey-details');
+
+  if (!state.isLoggedIn) {
+    journeySection.classList.add('hidden');
+    return;
+  }
+
+  if (!state.journey) {
+    journeySection.classList.remove('hidden');
+    details.innerHTML = `
+      <div class="text-center py-12">
+        <div class="w-16 h-16 rounded-full bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mx-auto mb-4">
+          <i data-lucide="map" class="w-8 h-8 text-brand-400"></i>
+        </div>
+        <h3 class="text-xl font-bold text-white mb-2">No Journey Locked</h3>
+        <p class="text-sm text-slate-400 mb-6 max-w-md mx-auto">Create your permanent trading plan. Set your goals, lock your journey, and track your progress automatically.</p>
+        <button onclick="showJourneyModal()" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold transition">
+          <i data-lucide="lock" class="w-4 h-4"></i> Start My Journey
+        </button>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  journeySection.classList.remove('hidden');
+  const j = state.journey;
+  const selected = getSelected();
+  const currentBalance = selected ? selected.balance : 0;
+  const progress = j.initial_balance > 0 ? ((currentBalance - j.initial_balance) / j.initial_balance * 100) : 0;
+  const currentDay = state.todayDay || 1;
+
+  details.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="glass-card rounded-xl p-4">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Initial Balance</div>
+        <div class="text-xl font-bold text-white mono">$${fmt(j.initial_balance)}</div>
+      </div>
+      <div class="glass-card rounded-xl p-4">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Daily Target</div>
+        <div class="text-xl font-bold text-brand-300 mono">+${j.daily_target_pct}%</div>
+      </div>
+      <div class="glass-card rounded-xl p-4">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Cycle Length</div>
+        <div class="text-xl font-bold text-white mono">${j.cycle_length_days} days</div>
+      </div>
+      <div class="glass-card rounded-xl p-4">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Start Date</div>
+        <div class="text-xl font-bold text-white mono">${j.start_date}</div>
+      </div>
+    </div>
+    <div class="glass-card rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm font-semibold text-white">Journey Progress</div>
+        <div class="text-sm text-slate-400">Day ${currentDay} of ${j.cycle_length_days}</div>
+      </div>
+      <div class="h-2 w-full bg-slate-800/80 rounded-full overflow-hidden">
+        <div class="h-full progress-bar rounded-full transition-all duration-500" style="width:${Math.min(100, (currentDay/j.cycle_length_days*100))}%"></div>
+      </div>
+      <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+        <span>Current Balance: $${fmt(currentBalance)}</span>
+        <span class="${progress >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${progress >= 0 ? '+' : ''}${fmt(progress)}%</span>
+      </div>
+    </div>
+  `;
+  lucide.createIcons();
+}
+
+
+/* ---------- View Switcher (multi-page router) ---------- */
+function applyView() {
+  const VIEWS = ['dashboard', 'journey', 'performance', 'account', 'schedule'];
+  let hash = location.hash.replace('#', '');
+  if (!VIEWS.includes(hash)) hash = 'dashboard';
+
+  // Visitor (not logged in): only the schedule planner is available.
+  if (!state.isLoggedIn) {
+    hash = 'schedule';
+  }
+
+  // Map legacy/alias hashes to canonical views.
+  const alias = { summary: 'account', contracts: 'performance' };
+  if (alias[hash]) hash = alias[hash];
+
+  // Show every element whose view classes include the active view; hide the rest.
+  document.querySelectorAll('[class*="view-"]').forEach(el => {
+    const classes = el.className.split(/\s+/);
+    const hasDashboard = classes.includes('view-dashboard');
+    const belongs = (classes.includes('view-' + hash)) || (hash === 'dashboard' && hasDashboard);
+    const authOnly = el.hasAttribute('data-auth-only');
+    const visible = belongs && (!authOnly || state.isLoggedIn);
+    el.classList.toggle('hidden', !visible);
+  });
+
+  // Header title reflects the active page.
+  const titles = {
+    dashboard: 'Welcome back — capital preserved.',
+    journey: 'My Journey — your locked trading plan.',
+    performance: "Today's Performance",
+    account: 'Account — lifetime performance.',
+    schedule: state.isLoggedIn ? 'Master Schedule — live' : 'Master Schedule planner',
+  };
+  const t = titles[hash];
+  if (t) $('header-title').textContent = t;
+}
+
+/* ---------- UI State Transitions ---------- */
+function applyModeVisibility() {
+  document.querySelectorAll('[data-auth-only]').forEach(el => {
+    el.classList.toggle('hidden', !state.isLoggedIn);
+  });
+}
+
+function applyLoggedInUI() {
+  state.isLoggedIn = true;
+  applyModeVisibility();
+  $('btn-login').classList.add('hidden');
+  $('account-card').classList.remove('hidden');
+  $('hero-section').classList.add('hidden');
+  renderJourney();
+  renderAccountCard();
+  renderTodayTarget();
+  renderLiveSchedule();
+  renderContracts();
+  renderSummary();
+  applyView();
+}
+
+function applyLoggedOutUI() {
+  state.isLoggedIn = false;
+  state.journey = null;
+  state.schedule = null;
+  applyModeVisibility();
+  $('btn-login').classList.remove('hidden');
+  $('account-card').classList.add('hidden');
+  $('hero-section').classList.add('hidden');
+  const so = $('schedule-output'); if (so) so.classList.add('hidden');
+  $('header-title').textContent = 'Protect your capital. Track every day.';
+  applyView();
+}
+
+/* ---------- Login Flow ---------- */
+function openDerivLogin() { location.href = '/oauth/login'; }
+function closeLoginModal() { $('login-modal').classList.add('hidden'); }
+function submitLogin() {
+  location.href = '/oauth/login';
+}
+function logout() {
+  state.isLoggedIn = false;
+  state.token = null;
+  state.accounts = [];
+  state.currentAccount = null;
+  state.contracts = [];
+  state.journey = null;
+  state.schedule = null;
+  $('account-dropdown').classList.add('hidden');
+
+  applyLoggedOutUI();
+  fetch('/api/logout', { method: 'POST' }).catch(() => {});
+}
+
+/* ---------- API Layer ---------- */
+async function api(path) {
+  const res = await fetch(path);
+  if (res.status === 401) {
+    logout();
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+async function refreshAll() {
+  if (!state.currentAccount) return;
+  try {
+    const bal = await api(`/api/balance?account_id=${encodeURIComponent(state.currentAccount)}`);
+    const selected = state.accounts.find(a => a.loginid === state.currentAccount);
+    if (selected) {
+      selected.balance = Number(bal.balance);
+      selected.currency = bal.currency || selected.currency;
+    }
+  } catch (e) { console.error('Balance fetch failed:', e.message); }
+  try {
+    const stmt = await api(`/api/statement?account_id=${encodeURIComponent(state.currentAccount)}`);
+    state.contracts = (stmt || []).filter(t => t.contract_type && t.is_sold === 1);
+  } catch (e) { console.error('Statement fetch failed:', e.message); }
+  try {
+    const portfolio = await api(`/api/portfolio?account_id=${encodeURIComponent(state.currentAccount)}`);
+    state.portfolio = portfolio;
+  } catch (e) { console.error('Portfolio fetch failed:', e.message); }
+  try {
+    const profitTable = await api(`/api/profit-table?account_id=${encodeURIComponent(state.currentAccount)}`);
+    state.profitTable = profitTable;
+  } catch (e) { console.error('Profit table fetch failed:', e.message); }
+  renderAccountCard();
+  renderTodayTarget();
+  renderLiveSchedule();
+  renderContracts();
+  renderSummary();
+}
+
+async function refreshBalance() {
+  if (!state.currentAccount) return;
+  try {
+    const bal = await api(`/api/balance?account_id=${encodeURIComponent(state.currentAccount)}`);
+    const selected = state.accounts.find(a => a.loginid === state.currentAccount);
+    if (selected) {
+      selected.balance = Number(bal.balance);
+      selected.currency = bal.currency || selected.currency;
+    }
+    renderAccountCard();
+    renderTodayTarget();
+    renderLiveSchedule();
+    renderSummary();
+  } catch (e) { console.error('Balance fetch failed', e); }
+}
+
+async function bootstrap() {
+  try {
+    const me = await api('/api/oauth/me');
+    const accounts = me.user ? me.user.accounts : [];
+    if (accounts && accounts.length > 0) {
+      state.accounts = accounts;
+      state.currentAccount = me.user.currentAccount;
+    
+      applyLoggedInUI();
+      await refreshAll();
+      await loadJourney();
+      setInterval(refreshBalance, 5000);
+    } else {
+      applyLoggedOutUI();
+    }
+  } catch (e) {
+    applyLoggedOutUI();
+  }
+}
+
+/* ---------- Exports ---------- */
+function exportSchedulePDF() {
+  const s = state.schedule; if (!s) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.text('TradersPulse — Master Schedule', 14, 18);
+  doc.setFontSize(10); doc.setTextColor(100);
+  doc.text(`${s.days} days · ${s.rate}% daily · starting ${fmt(s.initial)} · from ${s.startDate}`, 14, 26);
+  const head = state.isLoggedIn
+    ? [['Day','Date','Expected Start','Expected End','Daily Profit','Required %','Actual','Difference','Status']]
+    : [['Day','Date','Start','End','Profit Target','Req %','Actual','Diff']];
+  const selected = getSelected();
+  const live = selected ? selected.balance : 0;
+  const journeyDay = getCurrentJourneyDay();
+  const body = s.rows.map(r => {
+    const row = computeJourneyDay(r, live, journeyDay);
+    const diff = row.diff;
+    const statusLabel = row.status === 'complete' ? 'Complete' : row.status === 'behind' ? 'Behind' : row.status === 'missed' ? 'Missed' : 'Pending';
+    return state.isLoggedIn
+      ? [r.day, r.date, fmt(r.start), fmt(r.end), '+'+fmt(r.profit), r.rate+'%', row.actual!=null?fmt(row.actual):'—', diff!=null?(diff>=0?'+':'')+fmt(diff):'—', statusLabel]
+      : [r.day, r.date, fmt(r.start), fmt(r.end), '+'+fmt(r.profit), r.rate+'%', '—','—'];
+  });
+  doc.autoTable({ head, body, startY: 34, styles:{fontSize:9}, headStyles:{fillColor:[79,70,229]} });
+  doc.save('traderspulse-schedule.pdf');
+}
+function exportScheduleExcel() {
+  const s = state.schedule; if (!s) return;
+  const selected = getSelected();
+  const live = selected ? selected.balance : 0;
+  const journeyDay = getCurrentJourneyDay();
+  const rows = s.rows.map(r => {
+    const row = computeJourneyDay(r, live, journeyDay);
+    const obj = {
+      Day: r.day, Date: r.date,
+      'Starting Balance': +r.start.toFixed(2),
+      'Target Balance': +r.end.toFixed(2),
+      'Daily Profit Target': +r.profit.toFixed(2),
+      'Required %': r.rate,
+      'Actual Balance': row.actual!=null?+row.actual.toFixed(2):'',
+      'Difference': row.actual!=null?+(row.actual-r.end).toFixed(2):'',
+    };
+    if (state.isLoggedIn) {
+      obj.Status = row.status === 'complete' ? 'Complete' : row.status === 'missed' ? 'Missed' : 'Pending';
+    }
+    return obj;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Schedule');
+  XLSX.writeFile(wb, 'traderspulse-schedule.xlsx');
+}
+
+/* ---------- Init ---------- */
+(async function init(){
+  await bootstrap();
+  $('f-start').value = todayISO();
+  const today = todayISO();
+  const jStart = $('j-start');
+  if (jStart && !jStart.value) jStart.value = today;
+  const savedSchedule = localStorage.getItem('traderspulse_prelogin_schedule');
+  if (savedSchedule && !state.isLoggedIn) {
+    try {
+      const parsed = JSON.parse(savedSchedule);
+      state.preloginSchedule = parsed;
+    } catch (e) { console.error('Failed to load pre-login schedule:', e); }
+  }
+  $('schedule-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    state.schedule = buildSchedule({
+      initial: $('f-balance').value,
+      days: $('f-days').value,
+      rate: $('f-rate').value,
+      startDate: $('f-start').value,
+    });
+    localStorage.setItem('traderspulse_prelogin_schedule', JSON.stringify(state.schedule));
+    if (!state.isLoggedIn) renderPreLoginSchedule();
+    document.getElementById('schedule-output').scrollIntoView({ behavior:'smooth', block:'start' });
+  });
+  lucide.createIcons();
+})();
+</script>
+</body>
+</html>
