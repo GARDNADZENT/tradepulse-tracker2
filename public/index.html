@@ -199,7 +199,7 @@
     </header>
 
     <!-- CONTENT -->
-    <main id="main-content" class="flex-1 px-3 sm:px-4 lg:px-6 py-4 lg:py-6 space-y-6">
+    <main id="main-content" class="page-wrapper flex-1 px-3 sm:px-4 lg:px-6 py-4 lg:py-6 space-y-4">
 
       <!-- ============== PRE-LOGIN: HERO ============== -->
       <section id="hero-section" class="fade-in">
@@ -1469,7 +1469,7 @@ function applyLoggedOutUI() {
   applyModeVisibility();
   $('btn-login').classList.remove('hidden');
   $('account-card').classList.add('hidden');
-  $('hero-section').classList.add('hidden');
+  $('hero-section').classList.remove('hidden');
   const so = $('schedule-output'); if (so) so.classList.add('hidden');
   $('header-title').textContent = 'Protect your capital. Track every day.';
   applyView();
