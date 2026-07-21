@@ -1,7 +1,7 @@
 const express = require('express');
 require('dotenv').config();
 
-const requiredEnv = ['DERIV_APP_ID', 'DERIV_REDIRECT_URI', 'SESSION_SECRET'];
+const requiredEnv = ['DERIV_APP_ID', 'DERIV_REDIRECT_URI', 'SESSION_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
 for (const key of requiredEnv) {
   if (!process.env[key]) {
     console.error(`Missing required env var: ${key}`);

@@ -1,37 +1,41 @@
 const express = require('express');
 const router = express.Router();
-const { getDb } = require('./db');
+const { supabase } = require('./supabase');
 
-router.get('/journey', (req, res) => {
+router.get('/journey', async (req, res) => {
   if (!req.session.tokens || !req.session.tokens.access_token) {
     return res.status(401).json({ journey: null, error: 'No session' });
   }
 
   try {
-    const db = getDb();
     const userLoginid = req.session.currentAccount || req.session.accounts?.[0]?.loginid;
     if (!userLoginid) {
       return res.status(400).json({ journey: null, error: 'No account selected' });
     }
 
-    const journey = db.prepare(`
-      SELECT id, user_loginid, initial_balance, daily_target_pct, cycle_length_days, start_date, created_at, updated_at
-      FROM journeys WHERE user_loginid = ?
-    `).get(userLoginid);
+    const { data: journey, error: journeyError } = await supabase
+      .from('journeys')
+      .select('*')
+      .eq('user_loginid', userLoginid)
+      .maybeSingle();
 
+    if (journeyError) throw journeyError;
     if (!journey) {
       return res.json({ journey: null });
     }
 
-    const days = db.prepare(`
-      SELECT id, day_number, date, expected_start, expected_end, actual_balance, status
-      FROM journey_days WHERE journey_id = ? ORDER BY day_number ASC
-    `).all(journey.id);
+    const { data: days, error: daysError } = await supabase
+      .from('journey_days')
+      .select('*')
+      .eq('journey_id', journey.id)
+      .order('day_number', { ascending: true });
+
+    if (daysError) throw daysError;
 
     res.json({
       journey: {
         ...journey,
-        days
+        days: days || []
       }
     });
   } catch (err) {
@@ -40,7 +44,7 @@ router.get('/journey', (req, res) => {
   }
 });
 
-router.post('/journey', (req, res) => {
+router.post('/journey', async (req, res) => {
   if (!req.session.tokens || !req.session.tokens.access_token) {
     return res.status(401).json({ journey: null, error: 'No session' });
   }
@@ -57,33 +61,64 @@ router.post('/journey', (req, res) => {
       return res.status(400).json({ journey: null, error: 'No account selected' });
     }
 
-    const db = getDb();
     const now = new Date().toISOString();
 
-    const result = db.prepare(`
-      INSERT INTO journeys (user_loginid, initial_balance, daily_target_pct, cycle_length_days, start_date, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_loginid) DO UPDATE SET
-        initial_balance = excluded.initial_balance,
-        daily_target_pct = excluded.daily_target_pct,
-        cycle_length_days = excluded.cycle_length_days,
-        start_date = excluded.start_date,
-        updated_at = excluded.updated_at
-    `).run(userLoginid, initial_balance, daily_target_pct, cycle_length_days, start_date, now, now);
+    const { data: existing, error: existingError } = await supabase
+      .from('journeys')
+      .select('id')
+      .eq('user_loginid', userLoginid)
+      .maybeSingle();
 
-    const journeyId = result.lastInsertRowid || db.prepare('SELECT id FROM journeys WHERE user_loginid = ?').get(userLoginid).id;
+    if (existingError) throw existingError;
 
-    db.prepare('DELETE FROM journey_days WHERE journey_id = ?').run(journeyId);
+    let journeyId;
+
+    if (existing) {
+      journeyId = existing.id;
+      const { error: updateError } = await supabase
+        .from('journeys')
+        .update({
+          initial_balance: Number(initial_balance),
+          daily_target_pct: Number(daily_target_pct),
+          cycle_length_days: Number(cycle_length_days),
+          start_date,
+          updated_at: now
+        })
+        .eq('id', journeyId);
+
+      if (updateError) throw updateError;
+
+      const { error: deleteError } = await supabase
+        .from('journey_days')
+        .delete()
+        .eq('journey_id', journeyId);
+
+      if (deleteError) throw deleteError;
+    } else {
+      const { data: inserted, error: insertError } = await supabase
+        .from('journeys')
+        .insert({
+          user_loginid: userLoginid,
+          initial_balance: Number(initial_balance),
+          daily_target_pct: Number(daily_target_pct),
+          cycle_length_days: Number(cycle_length_days),
+          start_date,
+          created_at: now,
+          updated_at: now
+        })
+        .select('id')
+        .single();
+
+      if (insertError) throw insertError;
+      journeyId = inserted.id;
+    }
 
     const rows = [];
     let start = Number(initial_balance);
     const r = Number(daily_target_pct) / 100;
     const base = new Date(start_date);
 
-    const insertDay = db.prepare(`
-      INSERT INTO journey_days (journey_id, day_number, date, expected_start, expected_end, actual_balance, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    const insertPromises = [];
 
     for (let i = 1; i <= Number(cycle_length_days); i++) {
       const end = start * (1 + r);
@@ -103,8 +138,24 @@ router.post('/journey', (req, res) => {
         status: 'pending'
       });
 
-      insertDay.run(journeyId, i, dateStr, start, end, null, 'pending');
+      insertPromises.push(
+        supabase.from('journey_days').insert({
+          journey_id: journeyId,
+          day_number: i,
+          date: dateStr,
+          expected_start: start,
+          expected_end: end,
+          actual_balance: null,
+          status: 'pending'
+        })
+      );
+
       start = end;
+    }
+
+    const results = await Promise.all(insertPromises);
+    for (const result of results) {
+      if (result.error) throw result.error;
     }
 
     res.json({
@@ -126,7 +177,7 @@ router.post('/journey', (req, res) => {
   }
 });
 
-router.delete('/journey', (req, res) => {
+router.delete('/journey', async (req, res) => {
   if (!req.session.tokens || !req.session.tokens.access_token) {
     return res.status(401).json({ success: false, error: 'No session' });
   }
@@ -137,11 +188,28 @@ router.delete('/journey', (req, res) => {
       return res.status(400).json({ success: false, error: 'No account selected' });
     }
 
-    const db = getDb();
-    const journey = db.prepare('SELECT id FROM journeys WHERE user_loginid = ?').get(userLoginid);
+    const { data: journey, error: journeyError } = await supabase
+      .from('journeys')
+      .select('id')
+      .eq('user_loginid', userLoginid)
+      .maybeSingle();
+
+    if (journeyError) throw journeyError;
+
     if (journey) {
-      db.prepare('DELETE FROM journey_days WHERE journey_id = ?').run(journey.id);
-      db.prepare('DELETE FROM journeys WHERE id = ?').run(journey.id);
+      const { error: deleteDaysError } = await supabase
+        .from('journey_days')
+        .delete()
+        .eq('journey_id', journey.id);
+
+      if (deleteDaysError) throw deleteDaysError;
+
+      const { error: deleteJourneyError } = await supabase
+        .from('journeys')
+        .delete()
+        .eq('id', journey.id);
+
+      if (deleteJourneyError) throw deleteJourneyError;
     }
 
     res.json({ success: true });

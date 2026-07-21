@@ -35,7 +35,7 @@ Locked Journey  ──▶  Generate Master Schedule (once)  ──▶  Determine
 
 ## Tech stack
 
-- **Backend:** Node.js + Express, better-sqlite3 (journey storage), Deriv REST + WebSocket API.
+- **Backend:** Node.js + Express, Supabase PostgreSQL (journey data), Deriv REST + WebSocket API.
 - **Frontend:** Single-page app in `public/index.html` (vanilla JS, Tailwind-style utility classes, Lucide icons).
 - **Auth:** Deriv OAuth 2.0 (Authorization Code + PKCE), scopes `trade` and `account_manage`.
 
@@ -117,15 +117,14 @@ traderspulse/
 │   ├── oauth.js          # OAuth callback + login routes
 │   ├── oauth-helper.js   # PKCE / token exchange helpers
 │   ├── deriv.js          # Deriv REST + WebSocket data layer
-│   ├── journey.js        # Journey lock + schedule storage (SQLite)
+│   ├── supabase.js        # Supabase client setup
+│   ├── journey.js        # Journey lock + schedule storage
 │   ├── routes.js         # /api/balance, /statement, /portfolio, /profit-table, /oauth/me
 │   ├── session.js        # Session token access
-│   ├── db.js             # better-sqlite3 connection
 │   └── memory-store.js   # In-memory session store
 ├── public/
 │   ├── index.html        # SPA dashboard
 │   └── statics/          # static assets
-├── data/                 # SQLite database (gitignored)
 ├── .env.example
 └── package.json
 ```
