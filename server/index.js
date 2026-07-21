@@ -1,7 +1,7 @@
 const express = require('express');
 require('dotenv').config();
 
-const requiredEnv = ['DERIV_APP_ID', 'DERIV_REDIRECT_URI', 'SESSION_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+const requiredEnv = ['DERIV_APP_ID', 'DERIV_REDIRECT_URI', 'SESSION_SECRET'];
 for (const key of requiredEnv) {
   if (!process.env[key]) {
     console.error(`Missing required env var: ${key}`);
@@ -10,6 +10,7 @@ for (const key of requiredEnv) {
 }
 
 const { setup: setupSession } = require('./session');
+const { getDb, closeDb } = require('./db');
 const oauthRoutes = require('./oauth');
 const apiRoutes = require('./routes');
 const journeyRoutes = require('./journey');
@@ -47,8 +48,18 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`TradersPulse running on http://localhost:${PORT}`);
+});
+
+process.on('SIGINT', () => {
+  closeDb();
+  server.close(() => process.exit(0));
+});
+
+process.on('SIGTERM', () => {
+  closeDb();
+  server.close(() => process.exit(0));
 });
 
 module.exports = app;

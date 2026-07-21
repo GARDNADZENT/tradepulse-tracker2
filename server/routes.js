@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAccounts, getBalance, getPortfolio, getProfitTable, getStatement } = require('./deriv');
+const { getAccounts, getBalance, getPortfolio, getProfitTable, getStatement, getStatistics } = require('./deriv');
 
 const router = express.Router();
 
@@ -138,6 +138,19 @@ router.get('/statement', async (req, res) => {
     const data = await getStatement(req);
     res.json(data);
   } catch (err) {
+    if (err && err.unauthorized) return res.status(401).json({ error: 'Unauthorized' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/statistics', async (req, res) => {
+  try {
+    const accountId = req.query.account_id;
+    if (!accountId) return res.status(400).json({ error: 'account_id required' });
+    const data = await getStatistics(req, accountId);
+    res.json(data);
+  } catch (err) {
+    console.error('[API] /statistics error:', err.message || err);
     if (err && err.unauthorized) return res.status(401).json({ error: 'Unauthorized' });
     res.status(500).json({ error: err.message });
   }

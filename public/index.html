@@ -939,24 +939,19 @@ function statusChipHtml(status) {
   }
 
   function renderContracts() {
-  const all = contractsForSelected();
-  const stats = computeStats(all);
-  const today = todayISO();
-  const isToday = (c) => {
-    const t = c.date_expiry || c.sell_time || c.purchase_time;
-    if (!t) return false;
-    return new Date(Number(t) * 1000).toISOString().slice(0,10) === today;
-  };
-  const contracts = all.filter(isToday);
   const acc = getSelected() || {};
   const cur = acc.currency || 'USD';
+  const todayStats = (state.statistics && state.statistics.today) || { total: 0, wins: 0, losses: 0, net: 0, winRate: 0 };
+  const todayNet = todayStats.net;
 
-  const todayNet = stats.todayStats.net;
+  console.log('[Frontend] renderContracts - todayStats:', todayStats);
+  console.log('[Frontend] renderContracts - contractPerformance:', (state.statistics && state.statistics.contractPerformance) || []);
+
   const statCards = [
-    { label:`Total Trades Today`, value: stats.todayStats.trades, tone:'slate' },
-    { label:`Total Wins Today`, value: stats.todayStats.wins, tone:'emerald' },
-    { label:`Total Losses Today`, value: stats.todayStats.losses, tone:'rose' },
-    { label:`Today's Win Rate`, value: stats.todayStats.trades ? stats.todayStats.winRate.toFixed(1)+'%' : '—', tone:'brand' },
+    { label:`Total Trades Today`, value: todayStats.total, tone:'slate' },
+    { label:`Total Wins Today`, value: todayStats.wins, tone:'emerald' },
+    { label:`Total Losses Today`, value: todayStats.losses, tone:'rose' },
+    { label:`Today's Win Rate`, value: todayStats.total ? todayStats.winRate.toFixed(1)+'%' : '—', tone:'brand' },
     { label:`Today's Net P/L`, value: (todayNet>=0?'+':'')+fmt(todayNet)+' '+cur, tone: todayNet>=0?'emerald':'rose', isText:true },
   ];
   const toneMap = { slate:'text-slate-400', emerald:'text-emerald-400', rose:'text-rose-400', brand:'text-brand-400', amber:'text-amber-400' };
@@ -967,25 +962,15 @@ function statusChipHtml(status) {
     </div>
   `).join('');
 
-  const groups = {};
-  contracts.forEach(c => {
-    const type = c.contract_type || 'Unknown';
-    if (!groups[type]) groups[type] = { type, trades:0, wins:0, losses:0, net:0 };
-    groups[type].trades++;
-    const profit = Number(c.profit)||0;
-    if (profit > 0) groups[type].wins++;
-    else if (profit < 0) groups[type].losses++;
-    groups[type].net += profit;
-  });
-  const rows = Object.values(groups).sort((a,b)=>b.trades-a.trades);
+  const contractPerformance = (state.statistics && state.statistics.contractPerformance) || [];
   const tbody = $('contracts-tbody');
-  if (rows.length === 0) {
+  if (contractPerformance.length === 0) {
     tbody.innerHTML = '';
     $('contracts-empty').classList.remove('hidden');
     return;
   }
   $('contracts-empty').classList.add('hidden');
-  tbody.innerHTML = rows.map((g, i) => {
+  tbody.innerHTML = contractPerformance.map((g, i) => {
     const winPct = g.trades ? (g.wins/g.trades*100) : 0;
     const avg = g.trades ? g.net/g.trades : 0;
     const barColor = winPct>=70?'bg-emerald-500':winPct>=50?'bg-amber-500':'bg-rose-500';
@@ -1022,57 +1007,29 @@ function typeLabel(t){
   const selected = getSelected();
   const acc = selected || {};
   const cur = acc.currency || 'USD';
-  const contracts = (state.contracts || []).filter(c => Number(c.profit) != 0 || c.profit === 0);
+  const overall = (state.statistics && state.statistics.overall) || {};
 
-  const total = contracts.length;
-  const wins = contracts.filter(c => Number(c.profit) > 0).length;
-  const losses = contracts.filter(c => Number(c.profit) < 0).length;
-  const net = contracts.reduce((s, c) => s + Number(c.profit || 0), 0);
-  const winRate = total ? (wins / total * 100) : 0;
-  const avgProfit = wins ? contracts.filter(c => Number(c.profit) > 0).reduce((s, c) => s + Number(c.profit), 0) / wins : 0;
-  const avgLoss = losses ? contracts.filter(c => Number(c.profit) < 0).reduce((s, c) => s + Number(c.profit), 0) / losses : 0;
-  const largestWin = contracts.reduce((m, c) => Math.max(m, Number(c.profit || 0)), 0);
-  const largestLoss = contracts.reduce((m, c) => Math.min(m, Number(c.profit || 0)), 0);
+  console.log('[Frontend] renderSummary - overall:', overall);
+
+  const total = overall.total || 0;
+  const wins = overall.wins || 0;
+  const losses = overall.losses || 0;
+  const net = overall.net || 0;
+  const winRate = overall.winRate || 0;
+  const avgProfit = overall.avgProfit || 0;
+  const avgLoss = overall.avgLoss || 0;
+  const largestWin = overall.largestWin || 0;
+  const largestLoss = overall.largestLoss || 0;
   const roi = (state.journey && state.journey.initial_balance > 0)
     ? (net / state.journey.initial_balance * 100)
     : 0;
 
-  // Best / worst trading day (by calendar day)
-  const byDay = {};
-  contracts.forEach(c => {
-    const t = c.date_expiry || c.sell_time || c.purchase_time;
-    if (!t) return;
-    const day = new Date(Number(t) * 1000).toISOString().slice(0, 10);
-    byDay[day] = (byDay[day] || 0) + Number(c.profit || 0);
-  });
-  const dayEntries = Object.entries(byDay);
-  const bestDay = dayEntries.length ? dayEntries.reduce((a, b) => b[1] > a[1] ? b : a) : null;
-  const worstDay = dayEntries.length ? dayEntries.reduce((a, b) => b[1] < a[1] ? b : a) : null;
-
-  // Most traded market
-  const bySymbol = {};
-  contracts.forEach(c => { const s = c.symbol || 'Unknown'; bySymbol[s] = (bySymbol[s] || 0) + 1; });
-  const mostTraded = Object.keys(bySymbol).sort((a, b) => bySymbol[b] - bySymbol[a])[0] || '—';
-
-  // Most traded contract type
-  const byType = {};
-  contracts.forEach(c => { const t = c.contract_type || 'Unknown'; byType[t] = (byType[t] || 0) + 1; });
-  const mostTradedContract = typeLabel(Object.keys(byType).sort((a, b) => byType[b] - byType[a])[0] || '—');
-
-  // Lifetime winning / losing streaks (most recent first)
-  let winStreak = 0, lossStreak = 0;
-  const sortedC = [...contracts].sort((a, b) =>
-    (Number(b.date_expiry || b.sell_time || b.purchase_time) || 0) -
-    (Number(a.date_expiry || a.sell_time || a.purchase_time) || 0));
-  let curWin = 0, curLoss = 0;
-  for (const c of sortedC) {
-    const p = Number(c.profit) || 0;
-    if (p > 0) { curWin++; curLoss = 0; }
-    else if (p < 0) { curLoss++; curWin = 0; }
-    else { curWin = 0; curLoss = 0; }
-    if (curWin > winStreak) winStreak = curWin;
-    if (curLoss > lossStreak) lossStreak = curLoss;
-  }
+  const bestDay = overall.bestDay || null;
+  const worstDay = overall.worstDay || null;
+  const mostTraded = overall.mostTraded || '—';
+  const mostTradedContract = typeLabel(overall.mostTradedContract) || '—';
+  const winStreak = overall.winStreak || 0;
+  const lossStreak = overall.lossStreak || 0;
 
   const startBalance = state.journey ? Number(state.journey.initial_balance) : (Number(acc.balance) - net);
   const pct = (v) => (v >= 0 ? '+' : '') + fmt(v);
@@ -1202,6 +1159,7 @@ document.addEventListener('click', (e) => {
 function switchAccount(loginid) {
   state.currentAccount = loginid;
   state.contracts = [];
+  state.statistics = null;
   state.portfolio = null;
   state.profitTable = null;
   $('account-dropdown').classList.add('hidden');
@@ -1480,6 +1438,9 @@ function logout() {
   state.accounts = [];
   state.currentAccount = null;
   state.contracts = [];
+  state.statistics = null;
+  state.portfolio = null;
+  state.profitTable = null;
   state.journey = null;
   state.schedule = null;
   $('account-dropdown').classList.add('hidden');
@@ -1502,25 +1463,23 @@ async function api(path) {
 async function refreshAll() {
   if (!state.currentAccount) return;
   try {
-    const bal = await api(`/api/balance?account_id=${encodeURIComponent(state.currentAccount)}`);
+    const stats = await api(`/api/statistics?account_id=${encodeURIComponent(state.currentAccount)}`);
+    console.log('[Frontend] ========== Statistics Response ==========');
+    console.log('[Frontend] Raw API response:', JSON.stringify(stats, null, 2));
+    state.statistics = stats;
+    state.contracts = (stats.contracts || []).filter(t => t.contract_type && Number(t.is_sold) === 1);
+    console.log('[Frontend] state.statistics set:', {
+      today: stats.today,
+      overall: stats.overall,
+      contractPerformance: stats.contractPerformance,
+      contractsCount: (stats.contracts || []).length
+    });
     const selected = state.accounts.find(a => a.loginid === state.currentAccount);
-    if (selected) {
-      selected.balance = Number(bal.balance);
-      selected.currency = bal.currency || selected.currency;
+    if (selected && stats.balance) {
+      selected.balance = Number(stats.balance.balance);
+      selected.currency = stats.balance.currency || selected.currency;
     }
-  } catch (e) { console.error('Balance fetch failed:', e.message); }
-  try {
-    const stmt = await api(`/api/statement?account_id=${encodeURIComponent(state.currentAccount)}`);
-    state.contracts = (stmt || []).filter(t => t.contract_type && t.is_sold === 1);
-  } catch (e) { console.error('Statement fetch failed:', e.message); }
-  try {
-    const portfolio = await api(`/api/portfolio?account_id=${encodeURIComponent(state.currentAccount)}`);
-    state.portfolio = portfolio;
-  } catch (e) { console.error('Portfolio fetch failed:', e.message); }
-  try {
-    const profitTable = await api(`/api/profit-table?account_id=${encodeURIComponent(state.currentAccount)}`);
-    state.profitTable = profitTable;
-  } catch (e) { console.error('Profit table fetch failed:', e.message); }
+  } catch (e) { console.error('Statistics fetch failed:', e.message); }
   renderAccountCard();
   renderTodayTarget();
   renderLiveSchedule();
@@ -1536,6 +1495,10 @@ async function refreshBalance() {
     if (selected) {
       selected.balance = Number(bal.balance);
       selected.currency = bal.currency || selected.currency;
+    }
+    if (state.statistics && state.statistics.balance) {
+      state.statistics.balance.balance = Number(bal.balance);
+      state.statistics.balance.currency = bal.currency || state.statistics.balance.currency;
     }
     renderAccountCard();
     renderTodayTarget();
