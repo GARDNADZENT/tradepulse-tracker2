@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 require('dotenv').config();
 
 const requiredEnv = ['DERIV_APP_ID', 'DERIV_REDIRECT_URI', 'SESSION_SECRET'];
@@ -20,7 +21,7 @@ const app = express();
 setupSession(app);
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use((req, res, next) => {
   if (req.path === '/' || req.path.endsWith('.html')) {
@@ -44,12 +45,12 @@ app.use('/api', apiRoutes);
 app.use('/api', journeyRoutes);
 
 app.get('*', (req, res) => {
-  res.sendFile('index.html', { root: 'public' });
+  res.sendFile('index.html', { root: path.join(__dirname, '..', 'public') });
 });
 
 const PORT = process.env.PORT || 8000;
 
-if (require.main === module) {
+if (!process.env.VERCEL) {
   const server = app.listen(PORT, () => {
     console.log(`TradersPulse running on http://localhost:${PORT}`);
   });
