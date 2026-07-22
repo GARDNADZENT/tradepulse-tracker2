@@ -48,18 +48,21 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 8000;
-const server = app.listen(PORT, () => {
-  console.log(`TradersPulse running on http://localhost:${PORT}`);
-});
 
-process.on('SIGINT', () => {
-  closeDb();
-  server.close(() => process.exit(0));
-});
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    console.log(`TradersPulse running on http://localhost:${PORT}`);
+  });
 
-process.on('SIGTERM', () => {
-  closeDb();
-  server.close(() => process.exit(0));
-});
+  process.on('SIGINT', () => {
+    closeDb();
+    server.close(() => process.exit(0));
+  });
+
+  process.on('SIGTERM', () => {
+    closeDb();
+    server.close(() => process.exit(0));
+  });
+}
 
 module.exports = app;
