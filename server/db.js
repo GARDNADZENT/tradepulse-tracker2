@@ -1,4 +1,10 @@
-const Database = require('better-sqlite3');
+let Database;
+try {
+  Database = require('better-sqlite3');
+} catch (err) {
+  console.warn('[WARN] better-sqlite3 not available:', err.message);
+}
+
 const path = require('path');
 
 const dbPath = path.join(__dirname, '..', 'data', 'traderspulse.db');
@@ -15,6 +21,9 @@ let db = null;
 
 function getDb() {
   if (!db) {
+    if (!Database) {
+      throw new Error('Database (better-sqlite3) is not available in this environment');
+    }
     ensureDataDir();
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
