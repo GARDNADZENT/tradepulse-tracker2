@@ -1,32 +1,26 @@
 const express = require('express');
 const router = express.Router();
-const { getDb } = require('./db');
+const { getDb, getJourney, getJourneyDays, upsertJourney, insertJourneyDays, deleteJourneyDays, deleteJourney } = require('./db');
 
-router.get('/journey', (req, res) => {
+router.get('/journey', async (req, res) => {
   if (!req.session.tokens || !req.session.tokens.access_token) {
     return res.status(401).json({ journey: null, error: 'No session' });
   }
 
   try {
-    const db = getDb();
+    const db = await getDb();
     const userLoginid = req.session.currentAccount || req.session.accounts?.[0]?.loginid;
     if (!userLoginid) {
       return res.status(400).json({ journey: null, error: 'No account selected' });
     }
 
-    const journey = db.prepare(`
-      SELECT id, user_loginid, initial_balance, daily_target_pct, cycle_length_days, start_date, created_at, updated_at
-      FROM journeys WHERE user_loginid = ?
-    `).get(userLoginid);
+    const journey = await getJourney(db, userLoginid);
 
     if (!journey) {
       return res.json({ journey: null });
     }
 
-    const days = db.prepare(`
-      SELECT id, day_number, date, expected_start, expected_end, actual_balance, status
-      FROM journey_days WHERE journey_id = ? ORDER BY day_number ASC
-    `).all(journey.id);
+    const days = await getJourneyDays(db, journey.id);
 
     res.json({
       journey: {
@@ -40,7 +34,7 @@ router.get('/journey', (req, res) => {
   }
 });
 
-router.post('/journey', (req, res) => {
+router.post('/journey', async (req, res) => {
   if (!req.session.tokens || !req.session.tokens.access_token) {
     return res.status(401).json({ journey: null, error: 'No session' });
   }
@@ -57,34 +51,27 @@ router.post('/journey', (req, res) => {
       return res.status(400).json({ journey: null, error: 'No account selected' });
     }
 
-    const db = getDb();
+    const db = await getDb();
     const now = new Date().toISOString();
 
-    const result = db.prepare(`
-      INSERT INTO journeys (user_loginid, initial_balance, daily_target_pct, cycle_length_days, start_date, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_loginid) DO UPDATE SET
-        initial_balance = excluded.initial_balance,
-        daily_target_pct = excluded.daily_target_pct,
-        cycle_length_days = excluded.cycle_length_days,
-        start_date = excluded.start_date,
-        updated_at = excluded.updated_at
-    `).run(userLoginid, initial_balance, daily_target_pct, cycle_length_days, start_date, now, now);
+    const { id: journeyId } = await upsertJourney(db, {
+      user_loginid: userLoginid,
+      initial_balance: Number(initial_balance),
+      daily_target_pct: Number(daily_target_pct),
+      cycle_length_days: Number(cycle_length_days),
+      start_date: start_date,
+      created_at: now,
+      updated_at: now,
+    });
 
-    const journeyId = result.lastInsertRowid || db.prepare('SELECT id FROM journeys WHERE user_loginid = ?').get(userLoginid).id;
-
-    db.prepare('DELETE FROM journey_days WHERE journey_id = ?').run(journeyId);
+    await deleteJourneyDays(db, journeyId);
 
     const rows = [];
     let start = Number(initial_balance);
     const r = Number(daily_target_pct) / 100;
     const base = new Date(start_date);
 
-    const insertDay = db.prepare(`
-      INSERT INTO journey_days (journey_id, day_number, date, expected_start, expected_end, actual_balance, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
+    const daysToInsert = [];
     for (let i = 1; i <= Number(cycle_length_days); i++) {
       const end = start * (1 + r);
       const date = new Date(base);
@@ -103,9 +90,20 @@ router.post('/journey', (req, res) => {
         status: 'pending'
       });
 
-      insertDay.run(journeyId, i, dateStr, start, end, null, 'pending');
+      daysToInsert.push({
+        journey_id: journeyId,
+        day_number: i,
+        date: dateStr,
+        expected_start: start,
+        expected_end: end,
+        actual_balance: null,
+        status: 'pending',
+      });
+
       start = end;
     }
+
+    await insertJourneyDays(db, daysToInsert);
 
     res.json({
       journey: {
@@ -126,7 +124,7 @@ router.post('/journey', (req, res) => {
   }
 });
 
-router.delete('/journey', (req, res) => {
+router.delete('/journey', async (req, res) => {
   if (!req.session.tokens || !req.session.tokens.access_token) {
     return res.status(401).json({ success: false, error: 'No session' });
   }
@@ -137,11 +135,11 @@ router.delete('/journey', (req, res) => {
       return res.status(400).json({ success: false, error: 'No account selected' });
     }
 
-    const db = getDb();
-    const journey = db.prepare('SELECT id FROM journeys WHERE user_loginid = ?').get(userLoginid);
+    const db = await getDb();
+    const journey = await deleteJourney(db, userLoginid);
+
     if (journey) {
-      db.prepare('DELETE FROM journey_days WHERE journey_id = ?').run(journey.id);
-      db.prepare('DELETE FROM journeys WHERE id = ?').run(journey.id);
+      await deleteJourneyDays(db, journey.id);
     }
 
     res.json({ success: true });

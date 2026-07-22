@@ -1,84 +1,98 @@
-let Database;
-try {
-  Database = require('better-sqlite3');
-} catch (err) {
-  console.warn('[WARN] better-sqlite3 not available:', err.message);
+const supabase = require('./supabase');
+
+async function getDb() {
+  return supabase;
 }
 
-const path = require('path');
+async function getJourney(supabaseClient, userLoginid) {
+  const { data, error } = await supabaseClient
+    .from('journeys')
+    .select('id, user_loginid, initial_balance, daily_target_pct, cycle_length_days, start_date, created_at, updated_at')
+    .eq('user_loginid', userLoginid)
+    .single();
 
-const dbPath = path.join(__dirname, '..', 'data', 'traderspulse.db');
+  if (error && error.code !== 'PGRST116') {
+    throw new Error(`Failed to fetch journey: ${error.message}`);
+  }
 
-function ensureDataDir() {
-  const fs = require('fs');
-  const dataDir = path.join(__dirname, '..', 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  return data || null;
+}
+
+async function getJourneyDays(supabaseClient, journeyId) {
+  const { data, error } = await supabaseClient
+    .from('journey_days')
+    .select('id, day_number, date, expected_start, expected_end, actual_balance, status')
+    .eq('journey_id', journeyId)
+    .order('day_number', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch journey days: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+async function upsertJourney(supabaseClient, journey) {
+  const { data, error } = await supabaseClient
+    .from('journeys')
+    .upsert([journey], { onConflict: 'user_loginid' })
+    .select('id')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to upsert journey: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function insertJourneyDays(supabaseClient, days) {
+  const { error } = await supabaseClient
+    .from('journey_days')
+    .insert(days);
+
+  if (error) {
+    throw new Error(`Failed to insert journey days: ${error.message}`);
   }
 }
 
-let db = null;
+async function deleteJourneyDays(supabaseClient, journeyId) {
+  const { error } = await supabaseClient
+    .from('journey_days')
+    .delete()
+    .eq('journey_id', journeyId);
 
-function getDb() {
-  if (!db) {
-    if (!Database) {
-      throw new Error('Database (better-sqlite3) is not available in this environment');
-    }
-    ensureDataDir();
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    migrate(db);
+  if (error) {
+    throw new Error(`Failed to delete journey days: ${error.message}`);
   }
-  return db;
 }
 
-function migrate(db) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS journeys (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_loginid TEXT NOT NULL,
-      initial_balance REAL NOT NULL,
-      daily_target_pct REAL NOT NULL,
-      cycle_length_days INTEGER NOT NULL,
-      start_date TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(user_loginid)
-    );
+async function deleteJourney(supabaseClient, userLoginid) {
+  const { data, error } = await supabaseClient
+    .from('journeys')
+    .delete()
+    .eq('user_loginid', userLoginid)
+    .select('id')
+    .single();
 
-    CREATE TABLE IF NOT EXISTS journey_days (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      journey_id INTEGER NOT NULL,
-      day_number INTEGER NOT NULL,
-      date TEXT NOT NULL,
-      expected_start REAL NOT NULL,
-      expected_end REAL NOT NULL,
-      actual_balance REAL,
-      status TEXT DEFAULT 'pending',
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (journey_id) REFERENCES journeys(id) ON DELETE CASCADE,
-      UNIQUE(journey_id, day_number)
-    );
+  if (error && error.code !== 'PGRST116') {
+    throw new Error(`Failed to delete journey: ${error.message}`);
+  }
 
-    CREATE TABLE IF NOT EXISTS contract_snapshots (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_loginid TEXT NOT NULL,
-      account_type TEXT NOT NULL,
-      contract_id TEXT,
-      contract_type TEXT,
-      profit REAL,
-      date_expiry INTEGER,
-      purchase_time INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+  return data;
 }
 
 function closeDb() {
-  if (db) {
-    db.close();
-    db = null;
-  }
+  // No-op for Supabase
 }
 
-module.exports = { getDb, closeDb };
+module.exports = {
+  getDb,
+  getJourney,
+  getJourneyDays,
+  upsertJourney,
+  insertJourneyDays,
+  deleteJourneyDays,
+  deleteJourney,
+  closeDb,
+};
