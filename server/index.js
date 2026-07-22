@@ -2,14 +2,11 @@ const express = require('express');
 require('dotenv').config();
 
 const requiredEnv = ['DERIV_APP_ID', 'DERIV_REDIRECT_URI', 'SESSION_SECRET'];
-let missingEnv = [];
 for (const key of requiredEnv) {
   if (!process.env[key]) {
-    missingEnv.push(key);
+    console.error(`Missing required env var: ${key}`);
+    process.exit(1);
   }
-}
-if (missingEnv.length) {
-  console.warn(`[WARN] Missing required env vars: ${missingEnv.join(', ')}. OAuth routes will fail.`);
 }
 
 const { setup: setupSession } = require('./session');
@@ -46,11 +43,6 @@ app.get('/callback', oauthRoutes.handleCallback);
 app.use('/api', apiRoutes);
 app.use('/api', journeyRoutes);
 
-app.get('/health', (req, res) => {
-  const ok = !missingEnv.length;
-  res.status(ok ? 200 : 500).json({ ok, missingEnv });
-});
-
 app.get('*', (req, res) => {
   res.sendFile('index.html', { root: 'public' });
 });
@@ -73,4 +65,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = (req, res) => app(req, res);
+module.exports = app;
